@@ -1,0 +1,17 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+*.tsbuildinfo
+
+# Test / coverage
+coverage/
+
+# Environment (smoke E2E credentials, etc.)
+.env
+.env.local
+
+# Editor / OS
+.DS_Store
+*.log
