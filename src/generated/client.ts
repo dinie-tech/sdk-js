@@ -1,0 +1,87 @@
+/**
+ * `Dinie` — the SDK entry point (architecture §6, §9.1).
+ * Hand-authored in V0.1 to mirror future generator output (D1); V0.4 overwrites it.
+ *
+ * Responsibilities:
+ *   1. Browser guard — throw if running in a browser. The SDK is backend-only: an OAuth2
+ *      `client_secret` in the front end violates the threat model (architecture §12).
+ *   2. Env-var resolution — fall back to `DINIE_CLIENT_ID` / `DINIE_CLIENT_SECRET` /
+ *      `DINIE_BASE_URL` when the corresponding config field is absent. (`DINIE_LOG` is
+ *      resolved inside the runtime logger, so it is intentionally not handled here.)
+ *   3. Compose the transport + resources — build one {@link HttpClient} (which builds the
+ *      `TokenManager` internally on the same dispatcher) and hang each resource off it.
+ *   4. Expose `rate_limit` — the latest rate-limit snapshot (snake_case per the V0.1 demo,
+ *      D4 — provisional; freezes in V0.2).
+ *
+ * ── runtime ↔ generated boundary ──
+ * Lives in `generated/`. Imports only from `runtime/` (the transport, config type, error
+ * base, rate-limit type) and a sibling generated resource — never the reverse.
+ */
+
+import { DinieError } from '../runtime/errors.js';
+import { HttpClient, type DinieConfig } from '../runtime/http.js';
+import type { RateLimit } from '../runtime/rate-limit.js';
+
+import { Customers } from './resources/customers.js';
+
+/**
+ * The Dinie API client. Construct once and reuse — it owns a connection pool and an
+ * in-memory OAuth2 token cache.
+ *
+ * @example
+ * const client = new Dinie({ clientId, clientSecret });
+ * const customer = await client.customers.create({ taxId, name });
+ */
+export class Dinie {
+  /** The customers resource (`create` / `get` / `list`). */
+  readonly customers: Customers;
+
+  readonly #http: HttpClient;
+
+  constructor(config: DinieConfig) {
+    // 1. Backend-only guard — refuse to run where the client secret could leak. Probe
+    //    `window` via `globalThis` so the check compiles without the DOM lib (Node types).
+    if (typeof (globalThis as { window?: unknown }).window !== 'undefined') {
+      throw new DinieError(
+        'The Dinie SDK is backend-only and must not run in a browser: the OAuth2 client secret would be exposed. Call it from a server-side runtime.',
+      );
+    }
+
+    // 2. Resolve credentials + base URL, env vars filling any gap.
+    const clientId = firstNonEmpty(config.clientId, process.env['DINIE_CLIENT_ID']);
+    if (clientId === undefined) {
+      throw new DinieError('Missing Dinie client id: pass `clientId` or set DINIE_CLIENT_ID.');
+    }
+    const clientSecret = firstNonEmpty(config.clientSecret, process.env['DINIE_CLIENT_SECRET']);
+    if (clientSecret === undefined) {
+      throw new DinieError(
+        'Missing Dinie client secret: pass `clientSecret` or set DINIE_CLIENT_SECRET.',
+      );
+    }
+    const baseUrl = firstNonEmpty(config.baseUrl, process.env['DINIE_BASE_URL']);
+
+    // 3. Compose the transport + resources. HttpClient builds the TokenManager itself on
+    //    the same dispatcher, so there is no separate token wiring here.
+    const resolvedConfig: DinieConfig = {
+      ...config,
+      clientId,
+      clientSecret,
+      ...(baseUrl !== undefined ? { baseUrl } : {}),
+    };
+    this.#http = new HttpClient(resolvedConfig);
+    this.customers = new Customers(this.#http);
+  }
+
+  /** Latest rate-limit snapshot from the most recent response; `null` before the first call. */
+  get rate_limit(): RateLimit | null {
+    return this.#http.rateLimit;
+  }
+}
+
+/** First of the candidates that is a non-empty string, else `undefined`. */
+function firstNonEmpty(...candidates: (string | undefined)[]): string | undefined {
+  for (const candidate of candidates) {
+    if (candidate !== undefined && candidate !== '') return candidate;
+  }
+  return undefined;
+}
