@@ -21,3 +21,8 @@ export type { LogLevel, Logger } from './logger.js';
 // re-exported — the internal `HttpClient`/`InternalRequest`/`ListEnvelope` are
 // consumed directly from `./http.js` by the generated layer, never via this barrel.
 export type { DinieConfig, RequestOptions } from './http.js';
+
+// Pagination — `Page`/`PagePromise` ARE public surface (a `list()` returns a
+// `PagePromise`; §6). The `FetchPage`/`HasId` contract is runtime-internal: the
+// generated resource imports it directly from `./paginator.js` to build a `PagePromise`.
+export { Page, PagePromise } from './paginator.js';
