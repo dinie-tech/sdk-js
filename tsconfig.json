@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    /* Language & module target — Node >= 18, ESM (NodeNext). */
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "types": ["node", "vitest/globals"],
+
+    /* Strict total — every strict flag plus the extra safety nets. */
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitReturns": true,
+    "forceConsistentCasingInFileNames": true,
+
+    /* ESM hygiene — internal relative imports must end in `.js` (NodeNext). */
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+
+    /* Type-check only. Real emit (tsc -> dist/) is V1.0; build is deferred. */
+    "noEmit": true
+  },
+  "include": ["src", "tests", "scripts", "vitest.config.ts"]
+}

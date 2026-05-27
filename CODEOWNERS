@@ -1,0 +1,13 @@
+# CODEOWNERS — runtime/ <-> generated/ directory boundary (V0.1, see architecture D2).
+#
+# /src/runtime/   -> hand-written. Human owners — real enforcement.
+# /src/generated/ -> hand-authored in V0.1. The human owner is a PLACEHOLDER until
+#                    the generator + bot exist: V0.4 flips this to @dinie-sdk-bot and
+#                    adds `bun generate --check` to CI. Blocking generated/ to a bot
+#                    now would lock out the very humans writing the hand-authored layer.
+#
+# The unidirectional import boundary (generated/ -> runtime/, never the reverse)
+# is what is load-bearing now.
+
+/src/runtime/    @jaisonerick
+/src/generated/  @jaisonerick
