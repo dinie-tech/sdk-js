@@ -13,13 +13,18 @@
  * state leaks between tests.
  *
  * ── Extension contract (stories 007 / 010) ──
- * Add resource builders as methods on `MockUndici`, mirroring `mockToken()`:
- *   - `mockCustomer(...)`     → intercept `POST /v3/customers` / `GET /v3/customers/:id`
- *   - `mockCustomerPage(...)` → intercept `GET /v3/customers?limit=&starting_after=`
- * Each builder should register on `this.pool`, capture requests via the reply
- * callback, and return a handle exposing `callCount` + captured `requests`, exactly
- * like {@link TokenMock}. Keep the request-capture helpers (`normalizeHeaders`,
- * `captureRequest`) shared.
+ * `mockEndpoint()` (story 007) is the generic workhorse: intercept any path/method,
+ * reply with a fixed response or a per-call sequence (`503 → 201`, `401 → 201`),
+ * attach rate-limit / `retry-after` headers, or simulate a transport failure. Each
+ * reply captures the request (headers/body) so tests can assert header assembly,
+ * Idempotency-Key stability, and the retry counter. `mockCustomer()` is a thin
+ * `POST /v3/customers` convenience over it for the resource/E2E stories (009/010).
+ *
+ * Add further builders as methods on `MockUndici`, mirroring `mockToken()`/
+ * `mockEndpoint()`: register on `this.pool`, capture requests via the reply callback,
+ * and return a handle exposing `callCount` + captured `requests`, exactly like
+ * {@link TokenMock}/{@link EndpointMock}. Keep the request-capture helpers
+ * (`normalizeHeaders`, `captureRequest`) shared.
  */
 
 import type { Dispatcher, Interceptable } from 'undici';
@@ -79,6 +84,54 @@ export interface TokenMock {
   readonly requests: readonly CapturedRequest[];
   /** The most recent token request, or `undefined` before the first call. */
   readonly lastRequest: CapturedRequest | undefined;
+}
+
+/** One canned reply (or transport failure) for a {@link MockUndici.mockEndpoint} sequence. */
+export interface MockResponseSpec {
+  /** HTTP status to reply with. Default `200`. */
+  statusCode?: number;
+  /** Response body: an object/array is JSON-serialized, a string is sent verbatim. */
+  body?: unknown;
+  /** Extra response headers (e.g. `x-ratelimit-*`, `retry-after`). Merged over `content-type: application/json`. */
+  headers?: Record<string, string>;
+  /** Simulate a transport failure instead of a reply (drives the network-retry path). */
+  error?: Error;
+  /** Delay the reply by this many ms (real timer — keep `Date` fake-only if mixing). */
+  delayMs?: number;
+}
+
+/** Options for {@link MockUndici.mockEndpoint}. */
+export interface MockEndpointOptions {
+  /** HTTP method to intercept. Default `'GET'`. */
+  method?: string;
+  /** Path (or matcher) to intercept, e.g. `/v3/customers` or `/v3/customers/cus_1`. */
+  path: string | RegExp;
+  /**
+   * Reply(ies) for the endpoint. A single spec is persistent (serves every call); an
+   * array is consumed one-per-call in order, the LAST entry persisting for the rest.
+   * This lets a test sequence `503 → 201` or `401 → 201` without touching the pool.
+   */
+  responses: MockResponseSpec | MockResponseSpec[];
+}
+
+/** Handle for asserting on traffic to a {@link MockUndici.mockEndpoint}. */
+export interface EndpointMock {
+  /** Number of captured (reply) calls — transport-error calls are not captured. */
+  readonly callCount: number;
+  /** Every captured request to the endpoint, in order. */
+  readonly requests: readonly CapturedRequest[];
+  /** The most recent captured request, or `undefined` before the first reply call. */
+  readonly lastRequest: CapturedRequest | undefined;
+}
+
+/** Options for {@link MockUndici.mockCustomer} — a thin `POST /v3/customers` convenience. */
+export interface MockCustomerOptions {
+  /** Status to reply with. Default `201`. */
+  statusCode?: number;
+  /** Customer body to return. Default a minimal valid `cus_…` record. */
+  customer?: object;
+  /** Extra response headers. */
+  headers?: Record<string, string>;
 }
 
 /**
@@ -181,6 +234,86 @@ export class MockUndici {
         return requests[requests.length - 1];
       },
     };
+  }
+
+  /**
+   * Intercept an arbitrary endpoint, replying with a fixed response or a per-call
+   * sequence. The workhorse for the `http`/`customers` tests: sequence `503 → 201` to
+   * exercise retry, `401 → 201` for the one-shot re-auth, or attach `x-ratelimit-*` /
+   * `retry-after` headers. Each reply captures the request (headers/body) so tests can
+   * assert header assembly, idempotency-key stability, and the retry counter.
+   *
+   * A single spec persists (serves every call); an array is consumed one-per-call in
+   * registration order with the final entry persisting. A spec with `error` set
+   * simulates a transport failure (no reply, no capture) to drive the network-retry
+   * path.
+   */
+  mockEndpoint(options: MockEndpointOptions): EndpointMock {
+    const method = (options.method ?? 'GET').toUpperCase();
+    const specs = Array.isArray(options.responses) ? options.responses : [options.responses];
+    const fallbackPath = typeof options.path === 'string' ? options.path : '/';
+    const requests: CapturedRequest[] = [];
+
+    specs.forEach((spec, index) => {
+      const isLast = index === specs.length - 1;
+      const interceptor = this.pool.intercept({ path: options.path, method });
+
+      if (spec.error !== undefined) {
+        const scope = interceptor.replyWithError(spec.error);
+        if (spec.delayMs !== undefined) scope.delay(spec.delayMs);
+        if (isLast) scope.persist();
+        else scope.times(1);
+        return;
+      }
+
+      const scope = interceptor.reply((opts) => {
+        requests.push(captureRequest(opts, fallbackPath));
+        const statusCode = spec.statusCode ?? 200;
+        const responseOptions = {
+          headers: { 'content-type': 'application/json', ...(spec.headers ?? {}) },
+        };
+        return { statusCode, data: spec.body ?? '', responseOptions };
+      });
+      if (spec.delayMs !== undefined) scope.delay(spec.delayMs);
+      if (isLast) scope.persist();
+      else scope.times(1);
+    });
+
+    return {
+      get callCount() {
+        return requests.length;
+      },
+      get requests() {
+        return requests;
+      },
+      get lastRequest() {
+        return requests[requests.length - 1];
+      },
+    };
+  }
+
+  /**
+   * Convenience over {@link mockEndpoint} for `POST /v3/customers`: replies `201` with
+   * a minimal `cus_…` record. Used by the resource/E2E stories (009/010).
+   */
+  mockCustomer(options: MockCustomerOptions = {}): EndpointMock {
+    const customer = options.customer ?? {
+      id: 'cus_test_1',
+      object: 'customer',
+      tax_id: '12345678000190',
+      name: 'Acme Ltda',
+      status: 'active',
+      created_at: '2026-05-27T12:00:00.000Z',
+    };
+    return this.mockEndpoint({
+      method: 'POST',
+      path: '/v3/customers',
+      responses: {
+        statusCode: options.statusCode ?? 201,
+        body: customer,
+        ...(options.headers !== undefined ? { headers: options.headers } : {}),
+      },
+    });
   }
 }
 

@@ -16,3 +16,8 @@ export type { VerifiedWebhookEvent, WebhookExtractInput } from './webhooks.js';
 // themselves are runtime-internal (imported directly by http.ts), not public.
 export type { RateLimit } from './rate-limit.js';
 export type { LogLevel, Logger } from './logger.js';
+
+// HTTP client config/options (story 007). Only the public config/option TYPES are
+// re-exported — the internal `HttpClient`/`InternalRequest`/`ListEnvelope` are
+// consumed directly from `./http.js` by the generated layer, never via this barrel.
+export type { DinieConfig, RequestOptions } from './http.js';
