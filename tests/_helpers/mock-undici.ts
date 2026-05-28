@@ -134,6 +134,20 @@ export interface MockCustomerOptions {
   headers?: Record<string, string>;
 }
 
+/** Options for {@link MockUndici.mockCustomerPage} — a sequenced `GET /v3/customers` list. */
+export interface MockCustomerPageOptions {
+  /**
+   * The pages to serve, in order — each an array of (snake_case wire) customer records.
+   * Every page but the last replies `has_more: true`; the last replies `has_more: false`,
+   * so auto-pagination terminates exactly when the list is exhausted. The paginator
+   * threads `starting_after` (= the id of the last item of the previous page) onto each
+   * follow-up request, which the captured `requests` let a test assert.
+   */
+  pages: ReadonlyArray<ReadonlyArray<object>>;
+  /** Extra response headers merged onto every page reply (e.g. `x-ratelimit-*`). */
+  headers?: Record<string, string>;
+}
+
 /**
  * A `MockAgent`-backed transport for one test. Create via {@link useMockUndici},
  * which manages its per-test lifecycle. Expose the agent as `dispatcher` to inject
@@ -314,6 +328,24 @@ export class MockUndici {
         ...(options.headers !== undefined ? { headers: options.headers } : {}),
       },
     });
+  }
+
+  /**
+   * Convenience over {@link mockEndpoint} for `GET /v3/customers`: serve a SEQUENCE of
+   * list pages as `ListEnvelope<Customer>` bodies, deriving `has_more` from the page's
+   * position (every page but the last is `has_more: true`). Used by the E2E story (010)
+   * to exercise multi-page `for await` and the `starting_after` cursor in one builder.
+   * The returned handle's `requests` capture each page fetch so a test can assert the
+   * cursor threaded onto page 2+.
+   */
+  mockCustomerPage(options: MockCustomerPageOptions): EndpointMock {
+    const lastIndex = options.pages.length - 1;
+    const responses: MockResponseSpec[] = options.pages.map((data, index) => ({
+      statusCode: 200,
+      body: { object: 'list', data: [...data], has_more: index < lastIndex },
+      ...(options.headers !== undefined ? { headers: options.headers } : {}),
+    }));
+    return this.mockEndpoint({ method: 'GET', path: /^\/v3\/customers(\?|$)/, responses });
   }
 }
 
