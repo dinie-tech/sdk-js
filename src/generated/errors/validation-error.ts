@@ -12,20 +12,13 @@
  * Imports only from `runtime/errors.js` (generated → runtime, the normal direction).
  */
 
-import {
-  APIStatusError,
-  problemString,
-  registerErrorStatus,
-  registerErrorType,
-} from '../../runtime/errors.js';
+import { APIStatusError, registerErrorStatus, registerErrorType } from '../../runtime/errors.js';
 
-/** A semantically invalid request (422). `code` names the failed rule in openapi. */
-export class ValidationError extends APIStatusError {
-  /** Machine-readable code from the openapi `validation-failed` catalog, when present. */
-  get code(): string | undefined {
-    return problemString(this.body, 'code');
-  }
-}
+/**
+ * A semantically invalid request (422). Minimal typed marker — `code` (the failed rule),
+ * `status`, `body`, `headers`, `request_id` come from the base {@link APIStatusError}.
+ */
+export class ValidationError extends APIStatusError {}
 
 registerErrorType('https://docs.dinie.com/errors/validation-failed', ValidationError);
 registerErrorStatus(422, ValidationError);

@@ -50,7 +50,13 @@ Os 5 erros abaixo **não têm resposta do servidor** — descrevem falhas locais
 ### Exemplo — chamadas de API
 
 ```typescript
-import { APIConnectionError, APIStatusError, APITimeoutError, RateLimitError } from '@dinie/sdk';
+import {
+  APIConnectionError,
+  APIStatusError,
+  APITimeoutError,
+  parseRetryAfter,
+  RateLimitError,
+} from '@dinie/sdk';
 
 try {
   await client.customers.create({ taxId, name });
@@ -60,13 +66,40 @@ try {
   } else if (err instanceof APIConnectionError) {
     // Falha de transporte (DNS/socket) — sem resposta do servidor.
   } else if (err instanceof RateLimitError) {
-    console.log('retry após', err.retryAfter, 'segundos');
+    // O cliente já respeitou o Retry-After no loop de retry; para lógica custom:
+    const waitMs = parseRetryAfter(err.headers['retry-after']); // ms ou null
+    console.log('rate limited — esperar', waitMs, 'ms');
   } else if (err instanceof APIStatusError) {
     // Qualquer erro de resposta do servidor (ver catálogo abaixo).
-    console.error(err.status, err.type, err.request_id);
+    console.error(err.status, err.code, err.type, err.request_id);
   }
 }
 ```
+
+### Esperando o `Retry-After`
+
+`RateLimitError` é um typed marker minimal — **não** expõe getter próprio de `Retry-After`. O
+cliente já respeita o header `Retry-After` automaticamente no loop de retry interno (capado em
+≤60s). Quando você quer programar lógica custom **depois** de capturar a exceção (avisar o
+usuário, agendar seu próprio backoff), use o helper público `parseRetryAfter`:
+
+```typescript
+import { parseRetryAfter, RateLimitError } from '@dinie/sdk';
+
+try {
+  await client.customers.create({ taxId, name });
+} catch (err) {
+  if (err instanceof RateLimitError) {
+    const waitMs = parseRetryAfter(err.headers['retry-after']); // ms, ou null se ausente
+    if (waitMs !== null) {
+      console.log(`rate limited — tentar de novo em ${waitMs}ms`);
+    }
+  }
+}
+```
+
+`parseRetryAfter(retryAfter?: string): number | null` aceita as duas formas do RFC 7231
+(delta-seconds ou HTTP-date) e retorna milissegundos (ou `null` quando ausente/inválido).
 
 ### Exemplo — verificação de webhook
 
@@ -90,6 +123,11 @@ try {
 Quando a API responde com erro, o SDK despacha a resposta RFC 9457 para uma classe tipada
 (via `APIError.fromResponse`, por `type` URL e, em fallback, por status). Todas estendem
 `APIStatusError` e vivem em `src/generated/errors/` (espelho de `openapi.yaml`).
+
+As classes em `generated/errors/` são **typed markers minimais** — para os detalhes do erro,
+acesse `.status`, `.body`, `.headers`, `.code`, `.request_id` (todos na base `APIStatusError`).
+Parsing de header (ex.: `Retry-After`) vive em helpers do runtime (`parseRetryAfter`), não na
+classe de erro.
 
 | Status    | Classe (`@dinie/sdk`) | `type` URL (catálogo)                                                                  |
 | --------- | --------------------- | -------------------------------------------------------------------------------------- |

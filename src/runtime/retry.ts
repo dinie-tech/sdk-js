@@ -14,8 +14,10 @@
  * precedence over the computed backoff, capped at 60 s. Mirrors the algorithm
  * shared across the Dinie SDKs (runtime-patterns §2).
  *
- * These functions are internal to the runtime and imported directly by `http.ts`;
- * they are NOT part of the public SDK surface, so they stay out of the barrel.
+ * The decision/backoff functions (`shouldRetry`/`retryDelay`/`isRetryableNetworkError`)
+ * are internal to the runtime and imported directly by `http.ts` — NOT part of the public
+ * SDK surface, so they stay out of the barrel. The one exception is `parseRetryAfter`,
+ * promoted to the public runtime barrel (story 012) for custom post-catch logic.
  */
 
 // ── Retryable HTTP status (D5) ────────────────────────────────────────────────
@@ -68,13 +70,34 @@ export function retryDelay(attempt: number, retryAfter?: string): number {
 }
 
 /**
- * Parse a `Retry-After` header value to milliseconds, or `null` when absent or
+ * Parse a `Retry-After` header value to **milliseconds**, or `null` when absent or
  * unparseable. Accepts both forms RFC 7231 allows:
  *   - delta-seconds: a number of seconds (float tolerated) → `value · 1000`.
  *   - HTTP-date: an absolute timestamp → delta from now (may be negative for a
  *     past date; `retryDelay` clamps).
  *
  * This is the only place that reads the clock, and only for the HTTP-date form.
+ *
+ * Public helper (story 012). The SDK's retry loop already respects `Retry-After`
+ * internally (capped ≤60s), so you do NOT need this for normal retries — it is for
+ * **custom post-catch logic** after you catch a `RateLimitError`, e.g. surfacing the wait
+ * to a user or scheduling your own backoff:
+ *
+ * ```typescript
+ * import { parseRetryAfter, RateLimitError } from '@dinie/sdk';
+ *
+ * try {
+ *   await client.customers.create({ taxId, name });
+ * } catch (err) {
+ *   if (err instanceof RateLimitError) {
+ *     const waitMs = parseRetryAfter(err.headers['retry-after']); // ms or null
+ *     if (waitMs !== null) console.log(`rate limited — retry in ${waitMs}ms`);
+ *   }
+ * }
+ * ```
+ *
+ * @param retryAfter - The raw `Retry-After` header value (e.g. `err.headers['retry-after']`).
+ * @returns Milliseconds to wait, or `null` when the header is absent or unparseable.
  */
 export function parseRetryAfter(retryAfter?: string): number | null {
   if (retryAfter == null) return null;

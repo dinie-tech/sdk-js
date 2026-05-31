@@ -14,20 +14,14 @@
  * Imports only from `runtime/errors.js` (generated → runtime, the normal direction).
  */
 
-import {
-  APIStatusError,
-  problemString,
-  registerErrorStatus,
-  registerErrorType,
-} from '../../runtime/errors.js';
+import { APIStatusError, registerErrorStatus, registerErrorType } from '../../runtime/errors.js';
 
-/** Authenticated, but the account lacks permission for the action (403). */
-export class PermissionError extends APIStatusError {
-  /** Machine-readable code from the `forbidden` catalog doc, when present. */
-  get code(): string | undefined {
-    return problemString(this.body, 'code');
-  }
-}
+/**
+ * Authenticated, but the account lacks permission for the action (403). Minimal typed
+ * marker — `code`, `status`, `body`, `headers`, `request_id` come from the base
+ * {@link APIStatusError}.
+ */
+export class PermissionError extends APIStatusError {}
 
 registerErrorType('https://docs.dinie.com/errors/forbidden', PermissionError);
 registerErrorStatus(403, PermissionError);

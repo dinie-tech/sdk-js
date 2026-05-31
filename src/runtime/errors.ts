@@ -156,6 +156,14 @@ export class APIStatusError extends APIError {
   readonly detail: string | undefined;
   /** Problem Details `instance`, when present. */
   readonly instance: string | undefined;
+  /**
+   * Machine-readable `code` extension from the openapi error catalog, when present.
+   * Extracted uniformly here in the base so every catalog class
+   * (`generated/errors/`) inherits it without a per-class getter — the body-field
+   * extraction the V0.4 generator emits once into the base, not per subclass. Mirrors
+   * `code` on `openai-node`'s `APIError`.
+   */
+  readonly code: string | undefined;
 
   constructor(
     status: number,
@@ -174,6 +182,7 @@ export class APIStatusError extends APIError {
     this.title = pd?.title;
     this.detail = pd?.detail;
     this.instance = pd?.instance;
+    this.code = problemString(body, 'code');
   }
 
   private static makeMessage(
@@ -247,14 +256,11 @@ function fallbackCtor(status: number): APIStatusErrorCtor {
 // ── Helpers (shared with generated/errors for openapi catalog attributes) ─────
 
 /**
- * Read a string extension member from a parsed Problem Details body. Used by the catalog
- * classes (`generated/errors/`) to surface openapi-defined attributes such as `code`
- * without re-parsing the body.
+ * Read a string extension member from a parsed Problem Details body. Used by the base
+ * {@link APIStatusError} constructor to surface openapi-defined attributes such as `code`
+ * uniformly across the catalog — runtime-internal, never re-exported.
  */
-export function problemString(
-  body: ProblemDetails | string | null,
-  key: string,
-): string | undefined {
+function problemString(body: ProblemDetails | string | null, key: string): string | undefined {
   if (typeof body !== 'object' || body === null) return undefined;
   const value = body[key];
   return typeof value === 'string' ? value : undefined;

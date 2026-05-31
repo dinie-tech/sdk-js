@@ -34,5 +34,10 @@ export {
   WebhookTimestampError,
 } from './runtime/index.js';
 
+// Retry helper — `parseRetryAfter` (story 012): parse `err.headers['retry-after']` after
+// catching a `RateLimitError` for custom post-catch logic (the retry loop already respects
+// it internally). The generated catalog classes stay minimal typed markers.
+export { parseRetryAfter } from './runtime/index.js';
+
 // Config / option types.
 export type { DinieConfig, Logger, LogLevel, RateLimit, RequestOptions } from './runtime/index.js';

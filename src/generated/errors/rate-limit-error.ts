@@ -7,23 +7,19 @@
  * retryable; the HTTP loop honors `Retry-After` (capped ≤60s — retry.ts) before this is
  * ever thrown.
  *
+ * Minimal typed marker — empty body, like `openai-node`'s `RateLimitError`. The
+ * `Retry-After` header is NOT parsed by this class (header parsing isn't template-emittable
+ * from openapi): the retry loop already honors it internally, and for custom post-catch
+ * logic use the public `parseRetryAfter(err.headers['retry-after'])` runtime helper.
+ *
  * ── runtime ↔ generated boundary ──
  * Imports only from `runtime/errors.js` (generated → runtime, the normal direction).
  */
 
 import { APIStatusError, registerErrorStatus, registerErrorType } from '../../runtime/errors.js';
 
-/** Too many requests (429). The openapi `Retry-After` header surfaces as {@link retryAfter}. */
-export class RateLimitError extends APIStatusError {
-  /** Seconds until the limit resets, parsed from the openapi-defined `Retry-After` header. */
-  get retryAfter(): number | undefined {
-    const raw = this.headers['retry-after'];
-    const value = Array.isArray(raw) ? raw[0] : raw;
-    if (value === undefined) return undefined;
-    const seconds = Number.parseInt(value, 10);
-    return Number.isFinite(seconds) ? seconds : undefined;
-  }
-}
+/** Too many requests (429). `status`, `body`, `headers`, `code`, `request_id` from the base. */
+export class RateLimitError extends APIStatusError {}
 
 registerErrorType('https://docs.dinie.com/errors/rate-limit-exceeded', RateLimitError);
 registerErrorStatus(429, RateLimitError);

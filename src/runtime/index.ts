@@ -7,8 +7,8 @@
 // server-response catalog lives in `generated/errors/` (openapi-SoT) and reaches the
 // public surface via `src/index.ts`'s `export * from './generated/index.js'`. The
 // transport-shape types (`ProblemDetails`/`ResponseHeaders`/`APIErrorResponse`) and the
-// registration mechanism (`registerErrorType`/`registerErrorStatus`/`problemString`) are
-// deliberately NOT re-exported — they stay runtime-internal (criterion D).
+// registration mechanism (`registerErrorType`/`registerErrorStatus`) are deliberately NOT
+// re-exported — they stay runtime-internal (criterion D).
 export {
   DinieError,
   APIError,
@@ -29,6 +29,11 @@ export type { WebhookExtractInput } from './webhooks.js';
 // themselves are runtime-internal (imported directly by http.ts), not public.
 export type { RateLimit } from './rate-limit.js';
 export type { LogLevel, Logger } from './logger.js';
+
+// Retry helper — `parseRetryAfter` is the ONE public function from `retry.js` (story 012):
+// after catching a `RateLimitError`, callers parse `err.headers['retry-after']` for custom
+// post-catch logic. The retry decision/backoff functions stay runtime-internal (http.ts).
+export { parseRetryAfter } from './retry.js';
 
 // HTTP client config/options (story 007). Only the public config/option TYPES are
 // re-exported — the internal `HttpClient`/`InternalRequest`/`ListEnvelope` are

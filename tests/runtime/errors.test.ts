@@ -181,8 +181,10 @@ describe('APIError.fromResponse — status fallback (registry-driven)', () => {
   });
 });
 
-describe('catalog classes — openapi-defined attributes', () => {
-  it('surfaces the `code` extension on a ValidationError', async () => {
+describe('APIStatusError base — `code` extraction (uniform across the catalog)', () => {
+  // `code` is read once in the base ctor (story 012), so every catalog class inherits it
+  // without a per-class getter. One test via a subclass covers the whole catalog.
+  it('surfaces the openapi `code` extension on any catalog class', async () => {
     const res = makeResponse({
       statusCode: 422,
       body: problem({
@@ -193,34 +195,11 @@ describe('catalog classes — openapi-defined attributes', () => {
     });
     const err = (await APIError.fromResponse(res)) as ValidationError;
     expect(err).toBeInstanceOf(ValidationError);
+    expect(err).toBeInstanceOf(APIStatusError);
     expect(err.code).toBe('missing_required_field');
   });
 
-  it('surfaces the `code` extension on an AuthError', async () => {
-    const res = makeResponse({
-      statusCode: 401,
-      body: problem({
-        type: `${ERRORS}/authentication-failed`,
-        status: 401,
-        code: 'token_expired',
-      }),
-    });
-    const err = (await APIError.fromResponse(res)) as AuthError;
-    expect(err.code).toBe('token_expired');
-  });
-
-  it('parses the openapi `Retry-After` header into RateLimitError.retryAfter', async () => {
-    const res = makeResponse({
-      statusCode: 429,
-      headers: { 'retry-after': '30' },
-      body: problem({ type: `${ERRORS}/rate-limit-exceeded`, status: 429 }),
-    });
-    const err = (await APIError.fromResponse(res)) as RateLimitError;
-    expect(err).toBeInstanceOf(RateLimitError);
-    expect(err.retryAfter).toBe(30);
-  });
-
-  it('leaves catalog attributes undefined when the payload omits them', async () => {
+  it('leaves `code` undefined when the payload omits it', async () => {
     const err = (await APIError.fromResponse(
       makeResponse({
         statusCode: 401,

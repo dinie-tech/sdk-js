@@ -11,20 +11,14 @@
  * Imports only from `runtime/errors.js` (generated → runtime, the normal direction).
  */
 
-import {
-  APIStatusError,
-  problemString,
-  registerErrorStatus,
-  registerErrorType,
-} from '../../runtime/errors.js';
+import { APIStatusError, registerErrorStatus, registerErrorType } from '../../runtime/errors.js';
 
-/** Authentication failed (401). `code` ∈ `missing_token | invalid_token | token_expired`. */
-export class AuthError extends APIStatusError {
-  /** Machine-readable code from the openapi `authentication-failed` catalog, when present. */
-  get code(): string | undefined {
-    return problemString(this.body, 'code');
-  }
-}
+/**
+ * Authentication failed (401). Minimal typed marker — `code`
+ * (∈ `missing_token | invalid_token | token_expired`), `status`, `body`, `headers`,
+ * `request_id` come from the base {@link APIStatusError}.
+ */
+export class AuthError extends APIStatusError {}
 
 registerErrorType('https://docs.dinie.com/errors/authentication-failed', AuthError);
 registerErrorStatus(401, AuthError);
