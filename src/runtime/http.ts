@@ -24,17 +24,32 @@
  * buildRequest/retry).
  *
  * ── runtime ↔ generated boundary ──
- * Lives in `runtime/`, imports only sibling runtime modules + `undici`. `HttpClient`,
- * `InternalRequest` and `ListEnvelope` are runtime-internal and consumed directly by
- * `generated/` (client/resources/paginator) — they are deliberately NOT re-exported
- * from the runtime barrel. Only the config/option *types* (`DinieConfig`,
- * `RequestOptions`) are public (re-exported via `runtime/index.ts`).
+ * Lives in `runtime/`, imports sibling runtime modules + `undici`, plus ONE controlled
+ * inverse import (see below). `HttpClient`, `InternalRequest` and `ListEnvelope` are
+ * runtime-internal and consumed directly by `generated/` (client/resources/paginator) —
+ * deliberately NOT re-exported from the runtime barrel. Only the config/option *types*
+ * (`DinieConfig`, `RequestOptions`) are public (re-exported via `runtime/index.ts`).
+ *
+ * ── controlled inverse import (openapi-SoT forcing function — story 011) ──
+ * The general rule is "runtime/ never imports generated/". `http.ts` is one of two
+ * declared exceptions (the other is `webhooks.ts`). It EMITS the typed server-response
+ * errors whose source of truth is `openapi.yaml`, so those classes live in
+ * `generated/errors/`. Importing them here does two things:
+ *   1. registers the whole catalog with `APIError.fromResponse` at load time (each class
+ *      self-registers its `type` URL + status), so dispatch works whenever the transport
+ *      is used, regardless of how the consumer reached it; and
+ *   2. is the forcing function: if an error is not in openapi, `generated/errors` does
+ *      not define it, this import does not resolve, and `tsc` fails — forcing the openapi
+ *      conversation before any new server-response error can be thrown.
  */
 
 import type { Dispatcher } from 'undici';
 import { Pool } from 'undici';
 
 import { APIError, APIConnectionError, APITimeoutError } from './errors.js';
+// Controlled inverse import — see the boundary note above. `AuthError` is thrown directly
+// on a persistent 401; importing the barrel also registers the full catalog.
+import { AuthError } from '../generated/errors/index.js';
 import { generateIdempotencyKey } from './idempotency.js';
 import { RuntimeLogger, newRequestLogID, type LogLevel, type Logger } from './logger.js';
 import { RateLimitTracker, type RateLimit } from './rate-limit.js';
@@ -275,13 +290,18 @@ export class HttpClient {
         return await parseBody<T>(res);
       }
 
-      // 401 one-shot (D6): drop the token, re-auth once, retry. A second 401 falls
-      // through to the error mapping below → AuthError, with no loop.
+      // 401 one-shot (D6): drop the token, re-auth once, retry.
       if (res.statusCode === 401 && !reauthed) {
         this.#tokenManager.invalidate();
         reauthed = true;
         await drainBody(res);
         continue;
+      }
+      // Persistent 401 after the one-shot re-auth (D6): give up with a typed AuthError —
+      // no loop. Forcing `AuthError` (from generated/errors) guarantees the type even if
+      // the body lacks the openapi `type` URL.
+      if (res.statusCode === 401) {
+        throw await APIError.fromResponse(res, AuthError);
       }
 
       if (shouldRetry(res.statusCode) && attempt < maxRetries) {

@@ -20,34 +20,23 @@
  * `src/resources/webhooks/webhooks.ts:32-117`, with three changes: exposed as a
  * module-function, `secret: string | string[]`, and `extract` (verify + parse).
  *
- * ── runtime ↔ generated boundary ──
- * This module lives in `runtime/` and MUST NOT import from `generated/`. It is
- * therefore generic about the event payload: it returns the parsed event under the
- * structural `VerifiedWebhookEvent` shape, leaving the concrete `WebhookEvent`
- * union (a `generated/` type) to be bound at the public barrel via the type
- * parameter `E` (story 009). The exact reconciliation of this boundary is a
- * V0.2-freeze item — this module only honors the import rule.
+ * ── runtime ↔ generated boundary (controlled inverse import — openapi-SoT, story 011) ──
+ * The general rule is "runtime/ never imports generated/". `webhooks.ts` is one of two
+ * declared exceptions (the other is `http.ts`). The webhook event catalog's source of
+ * truth is `openapi.yaml` (`webhooks:`), so the `WebhookEvent` union lives in
+ * `generated/events/`. This module imports it and returns it DIRECTLY from `extract`.
+ *
+ * The inverse import is the forcing function: if an event is not in openapi,
+ * `generated/events` does not define it, this import does not resolve, and `tsc` fails —
+ * forcing the openapi conversation. (Resolves the story-005 boundary tension: no generic
+ * `<E>` parameter and no structural wrapper — the concrete union flows in from openapi.)
  */
 
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
-import { WebhookSignatureError, WebhookTimestampError } from './errors.js';
+import type { WebhookEvent } from '../generated/events/customer-created.js';
 
-/**
- * Structural shape every verified Dinie webhook event satisfies. The runtime stays
- * generic about `data`; the concrete `WebhookEvent` union narrows it at the public
- * barrel (story 009) by binding the `E` type parameter of `extract`.
- */
-export interface VerifiedWebhookEvent {
-  /** Stable event id (e.g. `evt_...`). */
-  id: string;
-  /** Discriminant — the event type (e.g. `customer.created`). */
-  type: string;
-  /** ISO 8601 creation instant. */
-  createdAt: string;
-  /** Event-specific payload; narrowed by the concrete event type. */
-  data: unknown;
-}
+import { WebhookSignatureError, WebhookTimestampError } from './errors.js';
 
 /** Input to `Webhooks.extract`. */
 export interface WebhookExtractInput {
@@ -69,19 +58,16 @@ const WHSEC_PREFIX = 'whsec_';
 const SIGNATURE_VERSION = 'v1';
 
 /**
- * Verify a Standard Webhooks v1 payload and return the parsed, verified event.
+ * Verify a Standard Webhooks v1 payload and return the parsed, typed event — the
+ * `WebhookEvent` union straight from openapi (`generated/events/`). It NEVER returns an
+ * unverified event.
  *
- * @typeParam E - The concrete event shape to narrow to (bound at the public barrel,
- *   story 009). Defaults to the structural {@link VerifiedWebhookEvent}.
  * @throws {WebhookTimestampError} The `webhook-timestamp` header is missing,
  *   malformed, or outside the tolerance window (too old OR too far in the future).
  * @throws {WebhookSignatureError} A required header is missing, no usable secret was
- *   supplied, or no signature in the header matched. The function NEVER returns an
- *   unverified event.
+ *   supplied, or no signature in the header matched.
  */
-function extract<E extends VerifiedWebhookEvent = VerifiedWebhookEvent>(
-  input: WebhookExtractInput,
-): E {
+function extract(input: WebhookExtractInput): WebhookEvent {
   const { headers, body, secret, toleranceSeconds = DEFAULT_TOLERANCE_SECONDS } = input;
 
   const webhookId = lookupHeader(headers, 'webhook-id');
@@ -117,7 +103,7 @@ function extract<E extends VerifiedWebhookEvent = VerifiedWebhookEvent>(
   const providedSignatures = parseSignatureHeader(signatureHeader);
   if (signaturesMatch(signedPayload, secrets, providedSignatures)) {
     const text = typeof body === 'string' ? body : body.toString('utf-8');
-    return JSON.parse(text) as E;
+    return JSON.parse(text) as WebhookEvent;
   }
 
   throw new WebhookSignatureError(
@@ -125,7 +111,7 @@ function extract<E extends VerifiedWebhookEvent = VerifiedWebhookEvent>(
   );
 }
 
-/** Public webhook surface. Re-exported via `runtime/index.ts` (story 009 binds `E`). */
+/** Public webhook surface. Re-exported via `runtime/index.ts` → `src/index.ts`. */
 export const Webhooks = { extract };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

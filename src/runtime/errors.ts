@@ -1,33 +1,39 @@
 /**
- * Typed error hierarchy + RFC 9457 dispatch factory.
+ * Error MECHANISM — the transport-agnostic base hierarchy, the client-side errors, and
+ * the RFC 9457 dispatch registry. The CATALOG of server-response error classes lives in
+ * `generated/errors/` because `openapi.yaml` is its source of truth (story 011).
  *
  *   DinieError (base, extends Error)
  *   ├── APIError
- *   │   ├── APIConnectionError
- *   │   │   └── APITimeoutError
- *   │   └── APIStatusError (carries status, headers, body, request_id)
- *   │       ├── BadRequestError (400)
- *   │       ├── AuthError (401)
- *   │       ├── PermissionError (403)
- *   │       ├── NotFoundError (404)
- *   │       ├── ConflictError (409)
- *   │       ├── ValidationError (422)
- *   │       │   └── IdempotencyKeyReuseError (422)
- *   │       ├── RateLimitError (429)
- *   │       ├── ServerError (500)
- *   │       └── ServiceUnavailableError (503)
- *   └── OAuthError / WebhookSignatureError / WebhookTimestampError (outside the APIError tree)
+ *   │   ├── APIConnectionError          ─┐ client-side: no server response to describe,
+ *   │   │   └── APITimeoutError          │ so they live HERE, in runtime/.
+ *   │   └── APIStatusError (status, headers, body, request_id, code)
+ *   │       └── …server-response catalog (generated/errors/, registered at load time)
+ *   └── OAuthError / WebhookSignatureError / WebhookTimestampError  ─┘ (also client-side)
  *
- * `APIError.fromResponse()` reads the RFC 9457 Problem Details body and dispatches
- * by `type` URL (D#1 catalog), falling back to the HTTP status. `request_id` is a
- * first-class attribute on every `APIStatusError` (from the response header, or the
- * body as a fallback) for the support flow. Mirrors `openai-node/src/core/error.ts`.
+ * ── runtime ↔ generated boundary ──
+ * This module NEVER imports `generated/`. It exposes `registerErrorType` /
+ * `registerErrorStatus`: each class in `generated/errors/<name>.ts` self-registers at
+ * module top-level, so `import = registration`. `APIError.fromResponse` consults the
+ * registry (by `type` URL, then by status), falling back to a generic `APIStatusError`.
+ * The generated layer (and `runtime/http.ts`, the one declared exception) import the
+ * concrete classes — never the reverse for the rest of runtime.
+ *
+ * `APIError.fromResponse()` reads the RFC 9457 Problem Details body and dispatches by
+ * `type` URL (the openapi catalog), falling back to the HTTP status. `request_id` is a
+ * first-class attribute on every `APIStatusError` (response header, or body fallback) for
+ * the support flow. Mirrors `openai-node/src/core/error.ts`.
  */
 
 /**
- * RFC 9457 Problem Details (wire shape). `type` is a URL — the dispatch key to the
- * typed subclass. Extensions (e.g. `violations`, `retry_after`, `request_id`) ride
- * along on the index signature.
+ * RFC 9457 Problem Details (wire shape). `type` is a URL — the dispatch key to the typed
+ * subclass. Catalog extensions (e.g. `code`, `request_id`) ride along on the index
+ * signature.
+ *
+ * ── Transport-internal (story 011 / criterion D) ──
+ * NOT part of the public surface. Consumed directly by this module and `http.ts`; never
+ * re-exported from `runtime/index.ts` or `src/index.ts`, so swapping the transport later
+ * cannot break consumers.
  */
 export interface ProblemDetails {
   type: string;
@@ -38,14 +44,17 @@ export interface ProblemDetails {
   [extension: string]: unknown;
 }
 
-/** Response headers as undici delivers them (lowercased keys). */
+/**
+ * Response headers as undici delivers them (lowercased keys). Transport-internal — see
+ * {@link ProblemDetails}.
+ */
 export type ResponseHeaders = Record<string, string | string[] | undefined>;
 
 /**
  * Minimal structural view of an HTTP error response. Matches undici's
  * `Dispatcher.ResponseData` (statusCode/headers/body with a `text()` reader), so
  * `APIError.fromResponse` works both against the live transport and synthetic test
- * objects — no network required.
+ * objects — no network required. Transport-internal — see {@link ProblemDetails}.
  */
 export interface APIErrorResponse {
   statusCode: number;
@@ -70,16 +79,24 @@ export class DinieError extends Error {
 export class APIError extends DinieError {
   /**
    * Build the right error from an HTTP error response: dispatch by Problem Details
-   * `type` URL (D#1 catalog), fall back to the HTTP status. Reads the body once.
+   * `type` URL (the openapi catalog), then by HTTP status, then a generic
+   * `APIStatusError`. Reads the body once.
+   *
+   * @param forceCtor - When provided, skip dispatch and build this exact class. Used by
+   *   `http.ts` to guarantee an `AuthError` on a persistent 401 regardless of the body
+   *   (the openapi-SoT forcing-function import — see `http.ts`).
    */
-  static async fromResponse(res: APIErrorResponse): Promise<APIError> {
+  static async fromResponse(
+    res: APIErrorResponse,
+    forceCtor?: APIStatusErrorCtor,
+  ): Promise<APIError> {
     const status = res.statusCode;
     const raw = await readBodyText(res.body);
     const parsed = parseJson(raw);
     const record = asRecord(parsed);
 
-    // Preserve the full Problem Details payload (title/detail/instance/violations…),
-    // or the raw text when the body is not a JSON object.
+    // Preserve the full Problem Details payload (title/detail/instance/code…), or the raw
+    // text when the body is not a JSON object.
     const body: ProblemDetails | string | null =
       record !== null ? (record as ProblemDetails) : raw.length > 0 ? raw : null;
 
@@ -90,8 +107,9 @@ export class APIError extends DinieError {
     const requestId = headerRequestId(res.headers) ?? bodyRequestId;
 
     const ctor =
-      (typeUrl !== undefined ? TYPE_URL_TO_CLASS[typeUrl] : undefined) ??
-      STATUS_TO_CLASS[status] ??
+      forceCtor ??
+      (typeUrl !== undefined ? typeUrlRegistry.get(typeUrl) : undefined) ??
+      statusRegistry.get(status) ??
       fallbackCtor(status);
 
     return new ctor(status, body, res.headers, requestId);
@@ -116,7 +134,10 @@ export class APITimeoutError extends APIConnectionError {
 
 // ── HTTP status errors ────────────────────────────────────────────────────────
 
-/** The API returned a non-2xx response. Carries the full error envelope. */
+/**
+ * The API returned a non-2xx response. Carries the full error envelope and is the base
+ * the openapi-mirrored catalog (`generated/errors/`) extends.
+ */
 export class APIStatusError extends APIError {
   /** HTTP status code of the response. */
   readonly status: number;
@@ -170,19 +191,7 @@ export class APIStatusError extends APIError {
   }
 }
 
-export class BadRequestError extends APIStatusError {}
-export class AuthError extends APIStatusError {}
-export class PermissionError extends APIStatusError {}
-export class NotFoundError extends APIStatusError {}
-export class ConflictError extends APIStatusError {}
-export class ValidationError extends APIStatusError {}
-/** A 422 whose `type` URL marks an idempotency-key reuse. Subclass of ValidationError. */
-export class IdempotencyKeyReuseError extends ValidationError {}
-export class RateLimitError extends APIStatusError {}
-export class ServerError extends APIStatusError {}
-export class ServiceUnavailableError extends APIStatusError {}
-
-// ── Outside the APIError tree (D11) ───────────────────────────────────────────
+// ── Outside the APIError tree (D11) — client-side, no server response ──────────
 
 /** OAuth2 client-credentials token acquisition/refresh failed. */
 export class OAuthError extends DinieError {}
@@ -191,47 +200,65 @@ export class WebhookSignatureError extends DinieError {}
 /** A webhook timestamp fell outside the tolerance window. */
 export class WebhookTimestampError extends DinieError {}
 
-// ── Dispatch tables ───────────────────────────────────────────────────────────
+// ── Dispatch registry (populated by generated/errors at load time) ────────────
 
-type APIStatusErrorConstructor = new (
+/** Constructor shape every server-response error class (`generated/errors/`) satisfies. */
+export type APIStatusErrorCtor = new (
   status: number,
   body: ProblemDetails | string | null,
   headers: ResponseHeaders,
   request_id: string | null,
 ) => APIStatusError;
 
-/** D#1 error catalog: RFC 9457 `type` URL → typed subclass (checked before status). */
-const TYPE_URL_TO_CLASS: Record<string, APIStatusErrorConstructor> = {
-  'https://docs.dinie.com.br/errors/authentication-error': AuthError,
-  'https://docs.dinie.com.br/errors/permission-denied': PermissionError,
-  'https://docs.dinie.com.br/errors/not-found': NotFoundError,
-  'https://docs.dinie.com.br/errors/conflict': ConflictError,
-  'https://docs.dinie.com.br/errors/validation-error': ValidationError,
-  'https://docs.dinie.com.br/errors/idempotency-key-reuse': IdempotencyKeyReuseError,
-  'https://docs.dinie.com.br/errors/rate-limit-exceeded': RateLimitError,
-  'https://docs.dinie.com.br/errors/internal-error': ServerError,
-  'https://docs.dinie.com.br/errors/service-unavailable': ServiceUnavailableError,
-};
+/** openapi `type` URL → typed class (primary dispatch key, checked before status). */
+const typeUrlRegistry = new Map<string, APIStatusErrorCtor>();
+/** HTTP status → typed class (dispatch fallback when no `type` URL matches). */
+const statusRegistry = new Map<number, APIStatusErrorCtor>();
 
-/** HTTP status → typed subclass (fallback when the `type` URL is absent/unknown). */
-const STATUS_TO_CLASS: Record<number, APIStatusErrorConstructor> = {
-  400: BadRequestError,
-  401: AuthError,
-  403: PermissionError,
-  404: NotFoundError,
-  409: ConflictError,
-  422: ValidationError,
-  429: RateLimitError,
-  500: ServerError,
-  503: ServiceUnavailableError,
-};
-
-/** Last resort when neither the `type` URL nor the exact status is mapped. */
-function fallbackCtor(status: number): APIStatusErrorConstructor {
-  return status >= 500 ? ServerError : APIStatusError;
+/**
+ * Register a server-response error class under its openapi `type` URL. Called at module
+ * top-level by each `generated/errors/<name>.ts` so that importing a class registers it
+ * with {@link APIError.fromResponse} — no manual ordering. This is the openapi-SoT seam:
+ * the catalog lives in `generated/` (mirrors openapi), the mechanism lives here.
+ */
+export function registerErrorType(typeUrl: string, ctor: APIStatusErrorCtor): void {
+  typeUrlRegistry.set(typeUrl, ctor);
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+/**
+ * Register a server-response error class as the fallback for an HTTP status (used when a
+ * response carries no `type` URL, or an unknown one). One class may claim several statuses
+ * (e.g. `ServerError` registers 500 AND 503).
+ */
+export function registerErrorStatus(status: number, ctor: APIStatusErrorCtor): void {
+  statusRegistry.set(status, ctor);
+}
+
+/**
+ * Last resort when neither the `type` URL nor the exact status is registered: route any
+ * 5xx to whatever class owns 500 (the catalog's `ServerError`), else a generic
+ * `APIStatusError`. Keeps the pre-refactor behavior without naming a generated class.
+ */
+function fallbackCtor(status: number): APIStatusErrorCtor {
+  if (status >= 500) return statusRegistry.get(500) ?? APIStatusError;
+  return APIStatusError;
+}
+
+// ── Helpers (shared with generated/errors for openapi catalog attributes) ─────
+
+/**
+ * Read a string extension member from a parsed Problem Details body. Used by the catalog
+ * classes (`generated/errors/`) to surface openapi-defined attributes such as `code`
+ * without re-parsing the body.
+ */
+export function problemString(
+  body: ProblemDetails | string | null,
+  key: string,
+): string | undefined {
+  if (typeof body !== 'object' || body === null) return undefined;
+  const value = body[key];
+  return typeof value === 'string' ? value : undefined;
+}
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return typeof value === 'object' && value !== null && !Array.isArray(value)

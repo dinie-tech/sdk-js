@@ -1,25 +1,38 @@
 // Curated public barrel — the single entry point consumers import from
-// (`import { Dinie, Webhooks } from '@dinie/sdk'`). It selects what is public: the
-// client + typed Webhooks, the resource/event types, the error catalog, pagination, and
-// config/option types. Internals (`HttpClient`, `TokenManager`, the case-agnostic runtime
-// `Webhooks`, internal request/envelope types) are deliberately NOT exported
-// (architecture §6, §9.1).
+// (`import { Dinie, Webhooks } from '@dinie/sdk'`). It RE-EXPORTS; it never RESTATES
+// (story 011). Everything derived from `openapi.yaml` — the client, the resource/event
+// types, and the server-response error catalog — flows out automatically via
+// `export * from './generated/index.js'`. The runtime contributes a curated set of
+// mechanism exports: the webhook verifier, pagination, the error base hierarchy + the
+// client-side errors, and the config/option types. Internals (`HttpClient`,
+// `TokenManager`, the case-agnostic transport-shape types, the error registry) are
+// deliberately NOT exported (architecture §6, §7, §9.1).
 
-// Client + typed Webhooks + resource/event types (generated layer — D1).
-export { Dinie, Webhooks } from './generated/index.js';
-export type {
-  Customer,
-  CustomerCreateParams,
-  CustomerCreatedEvent,
-  CustomerListParams,
-  WebhookEvent,
-} from './generated/index.js';
+// openapi-derived surface — `Dinie`, resource/event types, the server-response error
+// catalog (the 8 typed classes). Importing the package registers the catalog with
+// `APIError.fromResponse` (each class self-registers — story 011).
+export * from './generated/index.js';
 
-// Error catalog — the full typed hierarchy (classes + RFC 9457 types) is public.
-export * from './runtime/errors.js';
+// Webhooks lives in runtime (it owns the verification mechanism); `Webhooks.extract`
+// returns the generated `WebhookEvent` union, typed inside `runtime/webhooks.ts` via the
+// controlled inverse import. So it is re-exported from runtime, not generated.
+export { Webhooks } from './runtime/index.js';
 
 // Pagination — `Page`/`PagePromise` are public surface (`list()` returns a `PagePromise`).
 export { Page, PagePromise } from './runtime/index.js';
+
+// Error MECHANISM — the base hierarchy + the client-side errors (no server response to
+// describe). The server-response catalog is part of the generated surface above.
+export {
+  DinieError,
+  APIError,
+  APIStatusError,
+  APIConnectionError,
+  APITimeoutError,
+  OAuthError,
+  WebhookSignatureError,
+  WebhookTimestampError,
+} from './runtime/index.js';
 
 // Config / option types.
 export type { DinieConfig, Logger, LogLevel, RateLimit, RequestOptions } from './runtime/index.js';

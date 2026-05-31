@@ -3,14 +3,27 @@
 // Internal HttpClient / TokenManager are NOT re-exported.
 // Module stories populate this barrel incrementally.
 
-// Errors — typed hierarchy + RFC 9457 dispatch (story 002).
-export * from './errors.js';
+// Error MECHANISM — base hierarchy + client-side errors (story 002 / 011). The
+// server-response catalog lives in `generated/errors/` (openapi-SoT) and reaches the
+// public surface via `src/index.ts`'s `export * from './generated/index.js'`. The
+// transport-shape types (`ProblemDetails`/`ResponseHeaders`/`APIErrorResponse`) and the
+// registration mechanism (`registerErrorType`/`registerErrorStatus`/`problemString`) are
+// deliberately NOT re-exported — they stay runtime-internal (criterion D).
+export {
+  DinieError,
+  APIError,
+  APIStatusError,
+  APIConnectionError,
+  APITimeoutError,
+  OAuthError,
+  WebhookSignatureError,
+  WebhookTimestampError,
+} from './errors.js';
 
-// Webhooks — Standard Webhooks v1 verification (story 005). `Webhooks.extract` is
-// public surface; the concrete `WebhookEvent` union is bound at the public barrel
-// via the `E` type parameter (story 009).
+// Webhooks — Standard Webhooks v1 verification (story 005). `Webhooks.extract` returns the
+// concrete `WebhookEvent` union typed straight from `generated/events/` (story 011).
 export { Webhooks } from './webhooks.js';
-export type { VerifiedWebhookEvent, WebhookExtractInput } from './webhooks.js';
+export type { WebhookExtractInput } from './webhooks.js';
 
 // Leaf utilities — public types only (story 004). The generators/trackers/loggers
 // themselves are runtime-internal (imported directly by http.ts), not public.

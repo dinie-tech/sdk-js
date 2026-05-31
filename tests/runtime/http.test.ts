@@ -15,9 +15,9 @@ import {
   AuthError,
   ConflictError,
   NotFoundError,
-  ServiceUnavailableError,
+  ServerError,
   ValidationError,
-} from '../../src/runtime/errors.js';
+} from '../../src/generated/errors/index.js';
 import { HttpClient, type InternalRequest } from '../../src/runtime/http.js';
 import { useMockUndici } from '../_helpers/mock-undici.js';
 
@@ -177,7 +177,7 @@ describe('HttpClient — error mapping (semantic 4xx → typed, no retry)', () =
       responses: {
         statusCode: 404,
         body: {
-          type: 'https://docs.dinie.com.br/errors/not-found',
+          type: 'https://docs.dinie.com/errors/not-found',
           title: 'Not found',
           status: 404,
           detail: 'no such customer',
@@ -297,7 +297,7 @@ describe('HttpClient — retry integration', () => {
 
     await expect(
       makeClient(sleep).request<unknown>({ ...POST_CUSTOMER, options: { maxRetries: 2 } }),
-    ).rejects.toBeInstanceOf(ServiceUnavailableError);
+    ).rejects.toBeInstanceOf(ServerError);
 
     // First attempt + 2 retries = 3 calls; 2 backoff sleeps.
     expect(ep.callCount).toBe(3);
@@ -336,7 +336,7 @@ describe('HttpClient — 401 one-shot re-auth', () => {
       responses: [
         {
           statusCode: 401,
-          body: { type: 'https://docs.dinie.com.br/errors/authentication-error', status: 401 },
+          body: { type: 'https://docs.dinie.com/errors/authentication-failed', status: 401 },
         },
         { statusCode: 201, body: { id: 'cus_1' } },
       ],

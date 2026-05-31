@@ -1,20 +1,29 @@
+/**
+ * Error mechanism (runtime) + server-response catalog (generated) — story 011.
+ *
+ * The base hierarchy + client-side errors + the RFC 9457 dispatch registry live in
+ * `src/runtime/errors.ts`. The typed catalog (one class per openapi `type` URL) lives in
+ * `src/generated/errors/` and self-registers on import — so importing the catalog below
+ * is what populates `APIError.fromResponse`'s registry (the openapi-SoT seam).
+ */
+
+import {
+  AuthError,
+  BadRequestError,
+  ConflictError,
+  NotFoundError,
+  PermissionError,
+  RateLimitError,
+  ServerError,
+  ValidationError,
+} from '../../src/generated/errors/index.js';
 import {
   APIConnectionError,
   APIError,
   APIStatusError,
   APITimeoutError,
-  AuthError,
-  BadRequestError,
-  ConflictError,
   DinieError,
-  IdempotencyKeyReuseError,
-  NotFoundError,
   OAuthError,
-  PermissionError,
-  RateLimitError,
-  ServerError,
-  ServiceUnavailableError,
-  ValidationError,
   WebhookSignatureError,
   WebhookTimestampError,
 } from '../../src/runtime/errors.js';
@@ -24,7 +33,9 @@ import type {
   ResponseHeaders,
 } from '../../src/runtime/errors.js';
 
-const ERRORS = 'https://docs.dinie.com.br/errors';
+// openapi.yaml is the SoT: `https://docs.dinie.com/errors/<slug>` (note: `docs.dinie.com`,
+// not `docs.dinie.com.br` — the old hand-authored guess).
+const ERRORS = 'https://docs.dinie.com/errors';
 
 function makeResponse(opts: {
   statusCode: number;
@@ -85,25 +96,19 @@ describe('error hierarchy', () => {
       expect(err).not.toBeInstanceOf(APIStatusError);
     }
   });
-
-  it('treats IdempotencyKeyReuseError as a ValidationError (422)', () => {
-    const err = new IdempotencyKeyReuseError(422, null, {}, null);
-    expect(err).toBeInstanceOf(ValidationError);
-    expect(err).toBeInstanceOf(APIStatusError);
-  });
 });
 
-describe('APIError.fromResponse — dispatch by type URL (D#1 catalog)', () => {
+describe('APIError.fromResponse — dispatch by openapi `type` URL', () => {
+  // The 7 wired openapi type URLs + `forbidden` (orphan in openapi, registered anyway).
   const cases: ReadonlyArray<[string, number, new (...a: never[]) => APIStatusError]> = [
-    [`${ERRORS}/authentication-error`, 401, AuthError],
-    [`${ERRORS}/permission-denied`, 403, PermissionError],
+    [`${ERRORS}/invalid-request`, 400, BadRequestError],
+    [`${ERRORS}/authentication-failed`, 401, AuthError],
+    [`${ERRORS}/forbidden`, 403, PermissionError],
     [`${ERRORS}/not-found`, 404, NotFoundError],
     [`${ERRORS}/conflict`, 409, ConflictError],
-    [`${ERRORS}/validation-error`, 422, ValidationError],
-    [`${ERRORS}/idempotency-key-reuse`, 422, IdempotencyKeyReuseError],
+    [`${ERRORS}/validation-failed`, 422, ValidationError],
     [`${ERRORS}/rate-limit-exceeded`, 429, RateLimitError],
-    [`${ERRORS}/internal-error`, 500, ServerError],
-    [`${ERRORS}/service-unavailable`, 503, ServiceUnavailableError],
+    [`${ERRORS}/internal`, 500, ServerError],
   ];
 
   it.each(cases)('maps %s → correct subclass', async (type, status, ctor) => {
@@ -115,11 +120,19 @@ describe('APIError.fromResponse — dispatch by type URL (D#1 catalog)', () => {
     expect((err as APIStatusError).type).toBe(type);
   });
 
+  it('folds 503 into ServerError via the `internal` type URL (no ServiceUnavailableError)', async () => {
+    const res = makeResponse({
+      statusCode: 503,
+      body: problem({ type: `${ERRORS}/internal`, status: 503 }),
+    });
+    expect(await APIError.fromResponse(res)).toBeInstanceOf(ServerError);
+  });
+
   it('lets the type URL win over the HTTP status', async () => {
     // type says auth (401) while the transport reports 403 — type must take precedence.
     const res = makeResponse({
       statusCode: 403,
-      body: problem({ type: `${ERRORS}/authentication-error`, status: 401 }),
+      body: problem({ type: `${ERRORS}/authentication-failed`, status: 401 }),
     });
     const err = await APIError.fromResponse(res);
     expect(err).toBeInstanceOf(AuthError);
@@ -127,7 +140,7 @@ describe('APIError.fromResponse — dispatch by type URL (D#1 catalog)', () => {
   });
 });
 
-describe('APIError.fromResponse — status fallback', () => {
+describe('APIError.fromResponse — status fallback (registry-driven)', () => {
   const cases: ReadonlyArray<[number, new (...a: never[]) => APIStatusError]> = [
     [400, BadRequestError],
     [401, AuthError],
@@ -137,7 +150,7 @@ describe('APIError.fromResponse — status fallback', () => {
     [422, ValidationError],
     [429, RateLimitError],
     [500, ServerError],
-    [503, ServiceUnavailableError],
+    [503, ServerError], // 503 folds into ServerError (story 011)
   ];
 
   it.each(cases)('falls back to status %i → correct subclass', async (status, ctor) => {
@@ -168,6 +181,56 @@ describe('APIError.fromResponse — status fallback', () => {
   });
 });
 
+describe('catalog classes — openapi-defined attributes', () => {
+  it('surfaces the `code` extension on a ValidationError', async () => {
+    const res = makeResponse({
+      statusCode: 422,
+      body: problem({
+        type: `${ERRORS}/validation-failed`,
+        status: 422,
+        code: 'missing_required_field',
+      }),
+    });
+    const err = (await APIError.fromResponse(res)) as ValidationError;
+    expect(err).toBeInstanceOf(ValidationError);
+    expect(err.code).toBe('missing_required_field');
+  });
+
+  it('surfaces the `code` extension on an AuthError', async () => {
+    const res = makeResponse({
+      statusCode: 401,
+      body: problem({
+        type: `${ERRORS}/authentication-failed`,
+        status: 401,
+        code: 'token_expired',
+      }),
+    });
+    const err = (await APIError.fromResponse(res)) as AuthError;
+    expect(err.code).toBe('token_expired');
+  });
+
+  it('parses the openapi `Retry-After` header into RateLimitError.retryAfter', async () => {
+    const res = makeResponse({
+      statusCode: 429,
+      headers: { 'retry-after': '30' },
+      body: problem({ type: `${ERRORS}/rate-limit-exceeded`, status: 429 }),
+    });
+    const err = (await APIError.fromResponse(res)) as RateLimitError;
+    expect(err).toBeInstanceOf(RateLimitError);
+    expect(err.retryAfter).toBe(30);
+  });
+
+  it('leaves catalog attributes undefined when the payload omits them', async () => {
+    const err = (await APIError.fromResponse(
+      makeResponse({
+        statusCode: 401,
+        body: problem({ type: `${ERRORS}/authentication-failed`, status: 401 }),
+      }),
+    )) as AuthError;
+    expect(err.code).toBeUndefined();
+  });
+});
+
 describe('APIError.fromResponse — request_id', () => {
   it('extracts request_id from the x-request-id header', async () => {
     const res = makeResponse({
@@ -192,7 +255,7 @@ describe('APIError.fromResponse — request_id', () => {
     const res = makeResponse({
       statusCode: 422,
       body: problem({
-        type: `${ERRORS}/validation-error`,
+        type: `${ERRORS}/validation-failed`,
         status: 422,
         request_id: 'req_from_body',
       }),
@@ -205,7 +268,7 @@ describe('APIError.fromResponse — request_id', () => {
     const res = makeResponse({
       statusCode: 422,
       headers: { 'x-request-id': 'req_header' },
-      body: problem({ type: `${ERRORS}/validation-error`, status: 422, request_id: 'req_body' }),
+      body: problem({ type: `${ERRORS}/validation-failed`, status: 422, request_id: 'req_body' }),
     });
     const err = (await APIError.fromResponse(res)) as APIStatusError;
     expect(err.request_id).toBe('req_header');
@@ -221,7 +284,7 @@ describe('APIError.fromResponse — body preservation', () => {
   it('preserves the full Problem Details payload, including extensions', async () => {
     const violations = [{ field: 'taxId', message: 'invalid CPF' }];
     const pd = problem({
-      type: `${ERRORS}/validation-error`,
+      type: `${ERRORS}/validation-failed`,
       status: 422,
       title: 'Validation failed',
       detail: 'The taxId field is invalid.',

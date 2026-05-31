@@ -55,6 +55,11 @@ A V0.1 entrega `create` / `get` / `list` (paginado) em `Customers` e
 `Webhooks.extract` tipado para `customer.created`. Os 16 endpoints e 14 webhook
 events restantes chegam na V0.2.
 
+**Erros:** o SDK lança uma hierarquia tipada rooted em `DinieError`. Ver
+[`docs/errors.md`](./docs/errors.md) para os erros client-side (transporte, timeout,
+webhook, OAuth) e o mapeamento das classes de resposta do servidor para o
+[catálogo de erros](https://docs.dinie.com/errors/).
+
 ## Configuração
 
 | Opção          | Default    | Env var               |

@@ -1,6 +1,6 @@
 import * as nodeCrypto from 'node:crypto';
 
-import { Webhooks, type VerifiedWebhookEvent } from '../../src/runtime/webhooks.js';
+import { Webhooks } from '../../src/runtime/webhooks.js';
 import { WebhookSignatureError, WebhookTimestampError } from '../../src/runtime/errors.js';
 import {
   OTHER_WEBHOOK_SECRET,
@@ -31,17 +31,17 @@ describe('Webhooks.extract', () => {
       expect(event.data).toMatchObject({ id: 'cus_test_123', taxId: '12345678000190' });
     });
 
-    it('narrows to a caller-provided event type via the `E` type parameter', () => {
-      interface CustomerCreatedEvent extends VerifiedWebhookEvent {
-        type: 'customer.created';
-        data: { id: string; taxId: string };
-      }
+    it('returns the concrete WebhookEvent union, narrowable by `type` (no generic)', () => {
       const { headers, body, secret } = signWebhook();
 
-      const event = Webhooks.extract<CustomerCreatedEvent>({ headers, body, secret });
+      // `extract` returns the openapi `WebhookEvent` union straight from generated/events
+      // (story 011) — no `<E>` parameter. The discriminant narrows `data` to `Customer`.
+      const event = Webhooks.extract({ headers, body, secret });
 
-      // `event.data` is typed (no cast) — compile-time proof the generic flows through.
-      expect(event.data.taxId).toBe('12345678000190');
+      expect(event.type).toBe('customer.created');
+      if (event.type === 'customer.created') {
+        expect(event.data.taxId).toBe('12345678000190');
+      }
     });
 
     it('accepts a raw Buffer body (verifies the exact bytes received)', () => {
