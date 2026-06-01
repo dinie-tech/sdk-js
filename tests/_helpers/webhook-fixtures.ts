@@ -63,7 +63,12 @@ export function computeSignature(
   return createHmac('sha256', decodeSecret(secret)).update(signedPayload).digest('base64');
 }
 
-/** A default `customer.created`-shaped event body (camelCase, structural). */
+/**
+ * A default `customer.created`-shaped event body (camelCase, structural). The `data` is the
+ * reconciled `Customer` (story 002 — `cpf`/`cnpj`, epoch `number`, no `taxId`/`object`).
+ * The V0.1 `extract` still blind-casts (story 007 adds per-type deserialization), so these
+ * keys are camelCase to match what `extract` returns today.
+ */
 export function defaultEventBody(overrides: Record<string, unknown> = {}): string {
   return JSON.stringify({
     id: 'evt_test_123',
@@ -71,11 +76,16 @@ export function defaultEventBody(overrides: Record<string, unknown> = {}): strin
     createdAt: '2026-05-27T12:00:00.000Z',
     data: {
       id: 'cus_test_123',
-      object: 'customer',
-      taxId: '12345678000190',
+      externalId: null,
       name: 'Acme Pagamentos Ltda',
-      status: 'active',
-      createdAt: '2026-05-27T12:00:00.000Z',
+      email: 'ops@acme.test',
+      phone: '+5511999999999',
+      cpf: '123.456.789-00',
+      cnpj: '12.345.678/0001-90',
+      tradingName: 'Acme',
+      status: 'pending_kyc',
+      createdAt: 1775253599,
+      updatedAt: 1775253599,
     },
     ...overrides,
   });

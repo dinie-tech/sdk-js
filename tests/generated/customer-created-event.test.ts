@@ -33,8 +33,7 @@ describe('Webhooks.extract — public typed CustomerCreatedEvent (D8)', () => {
       expectTypeOf(event).toEqualTypeOf<CustomerCreatedEvent>();
       const created: Customer = event.data;
       expect(created.id).toBe('cus_test_123');
-      expect(created.object).toBe('customer');
-      expect(created.taxId).toBe('12345678000190');
+      expect(created.cpf).toBe('123.456.789-00');
       expect(created.name).toBe('Acme Pagamentos Ltda');
     }
   });

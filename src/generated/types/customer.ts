@@ -1,52 +1,219 @@
 /**
- * `Customer` types — the public, camelCase surface of the customers resource
- * (architecture §4.2). Hand-authored in V0.1 to mirror what the generator will emit
- * from the V3 OpenAPI schema (V0.4 overwrites this file in place — D1).
+ * `Customer` types + the **serializer convention** every resource/event story copies
+ * (architecture §3.4, §4 R1/R3, §7.1). Hand-authored in V0.2 to mirror what the generator
+ * will emit from the V3 OpenAPI `Customer`/`CreateCustomerRequest`/`UpdateCustomerRequest`
+ * schemas (V0.4 overwrites this file in place — D1). This file is the **exemplar**: stories
+ * 003 (customers), 005 (offers/loans), 006 (platform) and 007 (events) reproduce this exact
+ * shape, so the rules below are the source for `principles.md` (story 009).
  *
- * ── Casing (D4 — provisional) ──
- * The public surface is camelCase (idiomatic TS, honors the `taxId` demo); the wire is
- * snake_case. The explicit field-by-field mapping (`taxId` ↔ `tax_id`, `createdAt` ↔
- * `created_at`) lives in `../resources/customers.ts`, not here — these are pure shapes.
- * The convention freezes in V0.2 (open question #15).
+ * ── The determinism shape (what the generator emits per schema) ──
+ * For every schema the generator emits, in order:
+ *   1. `interface <Name>`        — the camelCase SDK model (read models) …
+ *   2. `interface <Name>Wire`    — the snake_case wire mirror (the bytes on the network);
+ *   3. `deserialize<Name>(raw)`  — wire → model (snake→camel), for RESPONSE/read schemas;
+ *   4. `serialize<Name>(model)`  — model → wire (camel→snake), for REQUEST schemas only.
+ * Read models get a deserializer; request bodies get a serializer. `Customer` is read-only
+ * (no `serializeCustomer` — you never POST a whole Customer), so it has a deserializer; the
+ * two request bodies get serializers. `CreditOffer` (credit-offer.ts) follows the same rule
+ * (read-only, deserializer only — R10).
+ *
+ * ── The four rules every (de)serializer obeys ──
+ *   R-EXPLICIT  Field-by-field mapping, never reflective key-casing. Each rename is written
+ *               out so the diff is reviewable and the generator output is auditable.
+ *   R-ORDER     Output object keys are alphabetical (by the *target* name). Stable ordering
+ *               keeps the V0.4 generator diff minimal.
+ *   R-OPTIONAL  An absent optional is OMITTED, never set to `undefined`
+ *               (`exactOptionalPropertyTypes`): `...(x !== undefined ? { k: x } : {})`.
+ *               A required-but-nullable field (`type: [T, 'null']`) is always present and
+ *               copied as-is (`T | null`), NOT made optional.
+ *   R-EPOCH     Timestamps are integer epoch seconds and stay `number` on the surface
+ *               (architecture D6). NEVER converted to `Date` (lossy, timezone-fragile,
+ *               non-deterministic). The sole `Date` in the SDK is `RateLimit.resetAt`
+ *               (a transport header, in `runtime/`) — out of scope here.
+ *
+ * ── Field map (Customer, openapi `components.schemas.Customer` @ 3fcfd83) ──
+ *   wire (snake_case)   → model (camelCase)   → type
+ *   id                  → id                  → CustomerId            (`cust_…`, NOT `cus_`)
+ *   external_id         → externalId          → string | null        (required, nullable)
+ *   name                → name                → string | null        (required, nullable)
+ *   email               → email               → string
+ *   phone               → phone               → string               (E.164)
+ *   cpf                 → cpf                 → string                (formatted in responses)
+ *   cnpj                → cnpj                → string | null         (required, nullable)
+ *   trading_name        → tradingName         → string | null        (required, nullable)
+ *   status              → status              → CustomerStatus (enum)
+ *   kyc                 → kyc                  → KycRequirement[]?     (story 004 — see note)
+ *   created_at          → createdAt           → number (epoch seconds)
+ *   updated_at          → updatedAt           → number (epoch seconds)
+ *
+ * ── Reconciliation vs. the V0.1 sketch (architecture §4) ──
+ *   R1  request is `{ email, phone, cpf, cnpj, name?, externalId? }` — there is NO `taxId`.
+ *   R2  the id prefix is `cust_`, not `cus_`.
+ *   R3  timestamps are `number` epoch seconds, not ISO `string`.
+ *   Also: the contract's `Customer` has NO `object: 'customer'` discriminant — dropped.
  *
  * ── runtime ↔ generated boundary ──
- * Lives in `generated/`. Pure type declarations with no imports, so it depends on
- * nothing (and certainly never on `runtime/`). Re-exported as public surface via the
- * generated barrel and `src/index.ts`.
+ * Lives in `generated/`. Imports only the sibling generated id type (`./ids.js`) — never
+ * `runtime/`. The page/list mapping that needs `ListEnvelope` lives in the RESOURCE
+ * (`resources/customers.ts`), which may import `runtime/`; keeping it out of here is what
+ * keeps these types self-contained. Model + request types are public surface (re-exported
+ * via the generated barrel + `src/index.ts`); the `*Wire` types and the (de)serializers are
+ * consumed by the resource (and the conformance harness — story 008) via direct import.
  */
 
-/** A Dinie customer (`cus_…`). Wire fields are snake_case; mapped in the resource. */
+import type { CustomerId } from './ids.js';
+
+/** Customer lifecycle status (openapi enum). */
+export type CustomerStatus = 'creating' | 'pending_kyc' | 'under_review' | 'active' | 'denied';
+
+/** A Dinie customer (`cust_…`) — the full read model returned by the customers resource. */
 export interface Customer {
-  /** Stable id, `cus_…`. */
+  /** Stable id, `cust_…`. */
+  id: CustomerId;
+  /** Partner external reference, or `null`. Wire: `external_id`. */
+  externalId: string | null;
+  /** Display name (auto-fetched from CPF records when omitted at creation), or `null`. */
+  name: string | null;
+  /** Contact email. */
+  email: string;
+  /** Contact phone, E.164. */
+  phone: string;
+  /** Customer CPF — formatted `XXX.XXX.XXX-XX` in responses. */
+  cpf: string;
+  /** Company CNPJ — formatted `XX.XXX.XXX/XXXX-XX` in responses, or `null`. */
+  cnpj: string | null;
+  /** Company trading name, or `null`. Wire: `trading_name`. */
+  tradingName: string | null;
+  /** Lifecycle status. */
+  status: CustomerStatus;
+  /**
+   * KYC requirements. Omitted during `creating`; present from `pending_kyc` onward. Typed
+   * `unknown[]` HERE to keep this file free of the KYC discriminated unions — story 004
+   * refines it to `KycRequirement[]` (architecture §3.4 hotspot; story 002 open-question
+   * flag). The wire field is `kyc`.
+   */
+  kyc?: unknown[];
+  /** Creation instant, epoch seconds (R-EPOCH). Wire: `created_at`. */
+  createdAt: number;
+  /** Last-modified instant, epoch seconds (R-EPOCH). Wire: `updated_at`. */
+  updatedAt: number;
+}
+
+/** Snake_case wire mirror of {@link Customer}. Decoded by {@link deserializeCustomer}. */
+export interface CustomerWire {
   id: string;
-  /** Resource discriminant. */
-  object: 'customer';
-  /** Tax id — CPF or CNPJ. Wire: `tax_id`. */
-  taxId: string;
-  /** Display name. */
-  name: string;
-  /** Contact email, when present. */
-  email?: string;
-  /** Lifecycle status (a free string in V0.1; becomes an enum in V0.2). */
-  status: string;
-  /** Creation instant, ISO 8601. Wire: `created_at`. */
-  createdAt: string;
+  external_id: string | null;
+  name: string | null;
+  email: string;
+  phone: string;
+  cpf: string;
+  cnpj: string | null;
+  trading_name: string | null;
+  status: CustomerStatus;
+  kyc?: unknown[];
+  created_at: number;
+  updated_at: number;
 }
 
-/** Body of `customers.create`. Mapped to the snake_case wire body in the resource. */
-export interface CustomerCreateParams {
-  /** Tax id — CPF or CNPJ. Wire: `tax_id`. */
-  taxId: string;
-  /** Display name. */
-  name: string;
-  /** Contact email (optional). */
-  email?: string;
+/** Body of `customers.create` — `{ email, phone, cpf, cnpj, name?, externalId? }` (R1). */
+export interface CreateCustomerRequest {
+  /** Contact email (required). */
+  email: string;
+  /** Contact phone, E.164 (required). */
+  phone: string;
+  /** Customer CPF (required). Accepts formatted or unformatted. */
+  cpf: string;
+  /** Company CNPJ (required). Accepts formatted or unformatted. */
+  cnpj: string;
+  /** Optional display name; auto-fetched from CPF records when omitted. */
+  name?: string;
+  /** Optional partner external reference. Wire: `external_id`. */
+  externalId?: string;
 }
 
-/** Query params for `customers.list`. The cursor is normally managed by the paginator. */
+/** Snake_case wire mirror of {@link CreateCustomerRequest}. Built by {@link serializeCreateCustomerRequest}. */
+export interface CreateCustomerRequestWire {
+  email: string;
+  phone: string;
+  cpf: string;
+  cnpj: string;
+  name?: string;
+  external_id?: string;
+}
+
+/** Body of `customers.update` — a PATCH subset (`email`/`phone`, both optional). */
+export interface UpdateCustomerRequest {
+  /** New contact email. */
+  email?: string;
+  /** New contact phone, E.164. */
+  phone?: string;
+}
+
+/** Snake_case wire mirror of {@link UpdateCustomerRequest}. Built by {@link serializeUpdateCustomerRequest}. */
+export interface UpdateCustomerRequestWire {
+  email?: string;
+  phone?: string;
+}
+
+/** Query params for `customers.list` (the cursor is normally driven by the paginator). */
 export interface CustomerListParams {
   /** Page size, 1..100. */
   limit?: number;
   /** Explicit cursor (the `id` of the last item of the previous page). Wire: `starting_after`. */
   startingAfter?: string;
+}
+
+// ── (De)serializers — the convention stories 003–007 copy verbatim ──────────────
+
+/**
+ * Decode a wire customer (snake_case) into a {@link Customer} (camelCase). Explicit,
+ * alphabetical, epoch-preserving — see the four rules in the module header. `kyc` is an
+ * optional array (omitted during `creating`): copied through untouched when present (story
+ * 004 will refine its element type).
+ */
+export function deserializeCustomer(raw: CustomerWire): Customer {
+  return {
+    cnpj: raw.cnpj,
+    cpf: raw.cpf,
+    createdAt: raw.created_at,
+    email: raw.email,
+    externalId: raw.external_id,
+    id: raw.id,
+    ...(raw.kyc !== undefined ? { kyc: raw.kyc } : {}),
+    name: raw.name,
+    phone: raw.phone,
+    status: raw.status,
+    tradingName: raw.trading_name,
+    updatedAt: raw.updated_at,
+  };
+}
+
+/**
+ * Encode a {@link CreateCustomerRequest} (camelCase) into its wire body (snake_case).
+ * Required fields always present; `name`/`external_id` omitted when absent (R-OPTIONAL).
+ */
+export function serializeCreateCustomerRequest(
+  params: CreateCustomerRequest,
+): CreateCustomerRequestWire {
+  return {
+    cnpj: params.cnpj,
+    cpf: params.cpf,
+    email: params.email,
+    ...(params.externalId !== undefined ? { external_id: params.externalId } : {}),
+    ...(params.name !== undefined ? { name: params.name } : {}),
+    phone: params.phone,
+  };
+}
+
+/**
+ * Encode an {@link UpdateCustomerRequest} (camelCase) into its PATCH wire body. Every field
+ * is optional; only the keys the caller set are emitted (R-OPTIONAL).
+ */
+export function serializeUpdateCustomerRequest(
+  params: UpdateCustomerRequest,
+): UpdateCustomerRequestWire {
+  return {
+    ...(params.email !== undefined ? { email: params.email } : {}),
+    ...(params.phone !== undefined ? { phone: params.phone } : {}),
+  };
 }

@@ -30,7 +30,7 @@ import { Customers } from './resources/customers.js';
  *
  * @example
  * const client = new Dinie({ clientId, clientSecret });
- * const customer = await client.customers.create({ taxId, name });
+ * const customer = await client.customers.create({ email, phone, cpf, cnpj });
  */
 export class Dinie {
   /** The customers resource (`create` / `get` / `list`). */

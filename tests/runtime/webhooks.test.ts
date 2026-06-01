@@ -28,7 +28,7 @@ describe('Webhooks.extract', () => {
 
       expect(event.type).toBe('customer.created');
       expect(event.id).toBe('evt_test_123');
-      expect(event.data).toMatchObject({ id: 'cus_test_123', taxId: '12345678000190' });
+      expect(event.data).toMatchObject({ id: 'cus_test_123', cpf: '123.456.789-00' });
     });
 
     it('returns the concrete WebhookEvent union, narrowable by `type` (no generic)', () => {
@@ -40,7 +40,7 @@ describe('Webhooks.extract', () => {
 
       expect(event.type).toBe('customer.created');
       if (event.type === 'customer.created') {
-        expect(event.data.taxId).toBe('12345678000190');
+        expect(event.data.cpf).toBe('123.456.789-00');
       }
     });
 

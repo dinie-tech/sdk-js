@@ -1,17 +1,18 @@
 /**
  * Focused tests for the generated-layer GLUE (story 009): the camelCase ↔ snake_case
- * wire mapping (D4) and the public `Webhooks.extract` type binding (D8). These exercise
- * the concerns this layer OWNS — they deliberately do NOT re-test OAuth transparency,
- * idempotency, or retry (runtime stories), nor the full surface E2E (story 010).
+ * wire mapping (now delegated to the story-002 serializers) and the public
+ * `Webhooks.extract` type binding (D8). These exercise the concerns this layer OWNS —
+ * they deliberately do NOT re-test OAuth transparency, idempotency, or retry (runtime
+ * stories), nor the full surface E2E (story 010).
  */
 
 import { Customers } from '../../src/generated/resources/customers.js';
 import { HttpClient } from '../../src/runtime/http.js';
 import { Dinie, Webhooks } from '../../src/index.js';
 import type {
+  CreateCustomerRequest,
   Customer,
   CustomerCreatedEvent,
-  CustomerCreateParams,
   CustomerListParams,
   PagePromise,
   RateLimit,
@@ -28,12 +29,17 @@ const mock = useMockUndici();
 // drifts from the documented shape (the runtime behavior is covered by story 010).
 async function _publicSurfaceTypeCheck(): Promise<void> {
   const client = new Dinie({ clientId: 'id', clientSecret: 'secret', baseUrl: 'https://x' });
-  const createParams: CustomerCreateParams = { taxId: '1', name: 'n' };
+  const createParams: CreateCustomerRequest = {
+    email: 'a@b.test',
+    phone: '+5511999999999',
+    cpf: '123.456.789-00',
+    cnpj: '12.345.678/0001-90',
+  };
   const listParams: CustomerListParams = { limit: 10 };
   const options: RequestOptions = {};
 
   expectTypeOf(client.customers.create(createParams, options)).resolves.toEqualTypeOf<Customer>();
-  expectTypeOf(client.customers.get('cus_1', options)).resolves.toEqualTypeOf<Customer>();
+  expectTypeOf(client.customers.get('cust_1', options)).resolves.toEqualTypeOf<Customer>();
   expectTypeOf(client.customers.list(listParams)).toEqualTypeOf<PagePromise<Customer>>();
   expectTypeOf(client.rate_limit).toEqualTypeOf<RateLimit | null>();
 
@@ -62,79 +68,101 @@ function makeCustomers(): Customers {
   return new Customers(http);
 }
 
-/** A snake_case wire customer record. */
+/** A valid `CreateCustomerRequest` (R1 — no `taxId`). */
+const CREATE_PARAMS: CreateCustomerRequest = {
+  email: 'ops@acme.test',
+  phone: '+5511999999999',
+  cpf: '123.456.789-00',
+  cnpj: '12.345.678/0001-90',
+  name: 'Acme Pagamentos Ltda',
+};
+
+/** A snake_case wire customer record (reconciled shape, story 002). */
 function wireCustomer(id: string, extra: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     id,
-    object: 'customer',
-    tax_id: '12345678000190',
+    external_id: null,
     name: 'Acme Pagamentos Ltda',
+    email: 'ops@acme.test',
+    phone: '+5511999999999',
+    cpf: '123.456.789-00',
+    cnpj: '12.345.678/0001-90',
+    trading_name: 'Acme',
     status: 'active',
-    created_at: '2026-05-27T12:00:00.000Z',
+    created_at: 1775253599,
+    updated_at: 1775253599,
     ...extra,
   };
 }
 
-describe('Customers — camelCase ↔ snake_case mapping (D4)', () => {
+describe('Customers — camelCase ↔ snake_case mapping via the generated serializers', () => {
   it('maps create params to the snake_case wire body and the response back to camelCase', async () => {
     mock.mockToken();
-    const endpoint = mock.mockCustomer({
-      customer: wireCustomer('cus_1', { email: 'ops@acme.test' }),
-    });
+    const endpoint = mock.mockCustomer({ customer: wireCustomer('cust_1') });
     const customers = makeCustomers();
 
-    const result = await customers.create({
-      taxId: '12345678000190',
-      name: 'Acme Pagamentos Ltda',
-      email: 'ops@acme.test',
-    });
+    const result = await customers.create(CREATE_PARAMS);
 
-    // Request body: camelCase params → snake_case wire.
+    // Request body: camelCase params → snake_case wire (serializeCreateCustomerRequest).
     const sentBody = JSON.parse(endpoint.lastRequest!.body) as Record<string, unknown>;
     expect(sentBody).toEqual({
-      tax_id: '12345678000190',
-      name: 'Acme Pagamentos Ltda',
+      cnpj: '12.345.678/0001-90',
+      cpf: '123.456.789-00',
       email: 'ops@acme.test',
+      name: 'Acme Pagamentos Ltda',
+      phone: '+5511999999999',
     });
 
-    // Response: snake_case wire → camelCase surface.
+    // Response: snake_case wire → camelCase surface (deserializeCustomer).
     expect(result).toEqual({
-      id: 'cus_1',
-      object: 'customer',
-      taxId: '12345678000190',
+      id: 'cust_1',
+      externalId: null,
       name: 'Acme Pagamentos Ltda',
       email: 'ops@acme.test',
+      phone: '+5511999999999',
+      cpf: '123.456.789-00',
+      cnpj: '12.345.678/0001-90',
+      tradingName: 'Acme',
       status: 'active',
-      createdAt: '2026-05-27T12:00:00.000Z',
+      createdAt: 1775253599,
+      updatedAt: 1775253599,
     });
   });
 
-  it('omits an absent optional email on both the wire body and the surface', async () => {
+  it('omits absent optionals on the wire body and an absent kyc array on the surface', async () => {
     mock.mockToken();
-    const endpoint = mock.mockCustomer({ customer: wireCustomer('cus_2') });
+    const endpoint = mock.mockCustomer({ customer: wireCustomer('cust_2') });
     const customers = makeCustomers();
 
-    const result = await customers.create({ taxId: '12345678000190', name: 'No Email Ltda' });
+    // No `name`/`externalId` → they must not appear on the wire body (exactOptionalPropertyTypes).
+    const result = await customers.create({
+      email: 'ops@acme.test',
+      phone: '+5511999999999',
+      cpf: '123.456.789-00',
+      cnpj: '12.345.678/0001-90',
+    });
 
     const sentBody = JSON.parse(endpoint.lastRequest!.body) as Record<string, unknown>;
-    expect('email' in sentBody).toBe(false);
-    expect('email' in result).toBe(false);
+    expect('name' in sentBody).toBe(false);
+    expect('external_id' in sentBody).toBe(false);
+    // The wire customer carries no `kyc`, so the deserialized surface omits it entirely.
+    expect('kyc' in result).toBe(false);
   });
 
   it('maps get response to camelCase', async () => {
     mock.mockToken();
     mock.mockEndpoint({
       method: 'GET',
-      path: /^\/v3\/customers\/cus_42/,
-      responses: { statusCode: 200, body: wireCustomer('cus_42') },
+      path: /^\/v3\/customers\/cust_42/,
+      responses: { statusCode: 200, body: wireCustomer('cust_42') },
     });
     const customers = makeCustomers();
 
-    const result = await customers.get('cus_42');
+    const result = await customers.get('cust_42');
 
-    expect(result.id).toBe('cus_42');
-    expect(result.taxId).toBe('12345678000190');
-    expect(result.createdAt).toBe('2026-05-27T12:00:00.000Z');
+    expect(result.id).toBe('cust_42');
+    expect(result.cpf).toBe('123.456.789-00');
+    expect(result.createdAt).toBe(1775253599);
   });
 
   it('maps list params (limit, startingAfter) to the wire query', async () => {
@@ -146,11 +174,11 @@ describe('Customers — camelCase ↔ snake_case mapping (D4)', () => {
     });
     const customers = makeCustomers();
 
-    await customers.list({ limit: 25, startingAfter: 'cus_seed' });
+    await customers.list({ limit: 25, startingAfter: 'cust_seed' });
 
     const path = endpoint.lastRequest!.path;
     expect(path).toContain('limit=25');
-    expect(path).toContain('starting_after=cus_seed');
+    expect(path).toContain('starting_after=cust_seed');
   });
 
   it('feeds the last item id as the next-page starting_after cursor and maps each item', async () => {
@@ -163,13 +191,13 @@ describe('Customers — camelCase ↔ snake_case mapping (D4)', () => {
           statusCode: 200,
           body: {
             object: 'list',
-            data: [wireCustomer('cus_a'), wireCustomer('cus_b')],
+            data: [wireCustomer('cust_a'), wireCustomer('cust_b')],
             has_more: true,
           },
         },
         {
           statusCode: 200,
-          body: { object: 'list', data: [wireCustomer('cus_c')], has_more: false },
+          body: { object: 'list', data: [wireCustomer('cust_c')], has_more: false },
         },
       ],
     });
@@ -180,11 +208,11 @@ describe('Customers — camelCase ↔ snake_case mapping (D4)', () => {
       collected.push(customer);
     }
 
-    expect(collected.map((c) => c.id)).toEqual(['cus_a', 'cus_b', 'cus_c']);
+    expect(collected.map((c) => c.id)).toEqual(['cust_a', 'cust_b', 'cust_c']);
     // Items are camelCase-mapped, not raw wire.
-    expect(collected[0]!.taxId).toBe('12345678000190');
+    expect(collected[0]!.cpf).toBe('123.456.789-00');
     // The second request carries the cursor = the id of the last item of page 1.
-    expect(endpoint.requests[1]!.path).toContain('starting_after=cus_b');
+    expect(endpoint.requests[1]!.path).toContain('starting_after=cust_b');
   });
 });
 
@@ -201,7 +229,7 @@ describe('public Webhooks.extract — typed WebhookEvent binding (D8)', () => {
     expect(event.type).toBe('customer.created');
     // The discriminant narrows `data` to `Customer` at compile time AND runtime.
     if (event.type === 'customer.created') {
-      expect(event.data.taxId).toBe('12345678000190');
+      expect(event.data.cpf).toBe('123.456.789-00');
     }
   });
 

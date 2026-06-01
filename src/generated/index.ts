@@ -11,8 +11,30 @@
 //   - `Customers` — composed internally by `Dinie`, not public surface (criterion A).
 //   - `Webhooks` — lives in runtime/ (which owns the verification mechanism); re-exported
 //     from `src/index.ts` directly (criterion C).
+//   - the `*Wire` types + `serialize*`/`deserialize*` functions (story 002) — the casing
+//     bridge is an implementation detail consumed by resources/conformance via direct
+//     module import, not partner surface. Only the camelCase model + request types ship.
 
 export { Dinie } from './client.js';
 export * from './errors/index.js';
 export type { CustomerCreatedEvent, WebhookEvent } from './events/customer-created.js';
-export type { Customer, CustomerCreateParams, CustomerListParams } from './types/customer.js';
+export type { CreditOffer, CreditOfferStatus } from './types/credit-offer.js';
+export type {
+  CreateCustomerRequest,
+  Customer,
+  CustomerListParams,
+  CustomerStatus,
+  UpdateCustomerRequest,
+} from './types/customer.js';
+export type {
+  ApiClientId,
+  BankAccountId,
+  CreditOfferId,
+  CustomerId,
+  EventId,
+  LoanId,
+  SimulationId,
+  TransactionId,
+  WebhookEndpointId,
+} from './types/ids.js';
+export type { Money } from './types/money.js';

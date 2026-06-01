@@ -128,7 +128,7 @@ export interface EndpointMock {
 export interface MockCustomerOptions {
   /** Status to reply with. Default `201`. */
   statusCode?: number;
-  /** Customer body to return. Default a minimal valid `cus_…` record. */
+  /** Customer body to return. Default a minimal valid `cust_…` record. */
   customer?: object;
   /** Extra response headers. */
   headers?: Record<string, string>;
@@ -308,16 +308,21 @@ export class MockUndici {
 
   /**
    * Convenience over {@link mockEndpoint} for `POST /v3/customers`: replies `201` with
-   * a minimal `cus_…` record. Used by the resource/E2E stories (009/010).
+   * a minimal `cust_…` record. Used by the resource/E2E stories (009/010).
    */
   mockCustomer(options: MockCustomerOptions = {}): EndpointMock {
     const customer = options.customer ?? {
-      id: 'cus_test_1',
-      object: 'customer',
-      tax_id: '12345678000190',
+      id: 'cust_test_1',
+      external_id: null,
       name: 'Acme Ltda',
+      email: 'ops@acme.test',
+      phone: '+5511999999999',
+      cpf: '123.456.789-00',
+      cnpj: '12.345.678/0001-90',
+      trading_name: 'Acme',
       status: 'active',
-      created_at: '2026-05-27T12:00:00.000Z',
+      created_at: 1775253599,
+      updated_at: 1775253599,
     };
     return this.mockEndpoint({
       method: 'POST',

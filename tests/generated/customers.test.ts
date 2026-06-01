@@ -7,8 +7,8 @@
  *
  *   - transparent OAuth2 — the partner NEVER calls `/auth/token`; the SDK mints ONE
  *     token transparently and reuses it across calls;
- *   - `create` auto-attaches a stable `Idempotency-Key` (`dinie-sdk-retry-…`) and bridges
- *     camelCase ↔ snake_case across the wire;
+ *   - `create` auto-attaches a stable `X-Idempotency-Key` (`dinie-sdk-retry-…`) and bridges
+ *     camelCase ↔ snake_case across the wire (now via the generated serializers — story 002);
  *   - `get` round-trips a customer;
  *   - `list` auto-paginates via `for await`, threading the `starting_after` cursor and
  *     terminating on `has_more: false`;
@@ -26,6 +26,15 @@ import { useMockUndici } from '../_helpers/mock-undici.js';
 
 const mock = useMockUndici();
 
+/** A valid `CreateCustomerRequest` (R1 — `email`/`phone`/`cpf`/`cnpj`, no `taxId`). */
+const CREATE_PARAMS = {
+  email: 'ops@acme.test',
+  phone: '+5511999999999',
+  cpf: '123.456.789-00',
+  cnpj: '12.345.678/0001-90',
+  name: 'Acme Pagamentos Ltda',
+};
+
 /** Build the public `Dinie` client over the mocked transport (the D3 seam). */
 function makeClient(): Dinie {
   return new Dinie({
@@ -36,15 +45,20 @@ function makeClient(): Dinie {
   });
 }
 
-/** A snake_case wire customer record (what the API returns). */
+/** A snake_case wire customer record (what the API returns — reconciled shape, story 002). */
 function wireCustomer(id: string, extra: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     id,
-    object: 'customer',
-    tax_id: '12345678000190',
+    external_id: null,
     name: 'Acme Pagamentos Ltda',
+    email: 'ops@acme.test',
+    phone: '+5511999999999',
+    cpf: '123.456.789-00',
+    cnpj: '12.345.678/0001-90',
+    trading_name: 'Acme',
     status: 'active',
-    created_at: '2026-05-27T12:00:00.000Z',
+    created_at: 1775253599,
+    updated_at: 1775253599,
     ...extra,
   };
 }
@@ -52,19 +66,19 @@ function wireCustomer(id: string, extra: Record<string, unknown> = {}): Record<s
 describe('transparent OAuth2 — the partner never touches /auth/token', () => {
   it('mints exactly one token transparently and reuses it across resource calls', async () => {
     const tokens = mock.mockToken();
-    const created = mock.mockCustomer({ customer: wireCustomer('cus_1') });
+    const created = mock.mockCustomer({ customer: wireCustomer('cust_1') });
     const fetched = mock.mockEndpoint({
       method: 'GET',
-      path: '/v3/customers/cus_1',
-      responses: { statusCode: 200, body: wireCustomer('cus_1') },
+      path: '/v3/customers/cust_1',
+      responses: { statusCode: 200, body: wireCustomer('cust_1') },
     });
     const client = makeClient();
 
     // The partner calls only resource methods — there is NO public way to request a
     // token. The SDK acquires one transparently on the first call …
-    await client.customers.create({ taxId: '12345678000190', name: 'Acme Pagamentos Ltda' });
+    await client.customers.create(CREATE_PARAMS);
     // … and reuses the cached token on the second (no second token POST).
-    await client.customers.get('cus_1');
+    await client.customers.get('cust_1');
 
     expect(tokens.callCount).toBe(1);
     expect(tokens.lastRequest?.method).toBe('POST');
@@ -78,34 +92,34 @@ describe('transparent OAuth2 — the partner never touches /auth/token', () => {
 describe('customers.create — auto idempotency + camelCase ↔ snake_case mapping', () => {
   it('attaches a stable Idempotency-Key and bridges the wire casing both ways', async () => {
     mock.mockToken();
-    const endpoint = mock.mockCustomer({
-      customer: wireCustomer('cus_1', { email: 'ops@acme.test' }),
-    });
+    const endpoint = mock.mockCustomer({ customer: wireCustomer('cust_1') });
     const client = makeClient();
 
-    const customer = await client.customers.create({
-      taxId: '12345678000190',
-      name: 'Acme Pagamentos Ltda',
-      email: 'ops@acme.test',
-    });
+    const customer = await client.customers.create(CREATE_PARAMS);
 
     // Auto-generated X-Idempotency-Key (R4/D9) on the write.
     expect(endpoint.lastRequest?.headers['x-idempotency-key']).toMatch(/^dinie-sdk-retry-/);
-    // camelCase params → snake_case wire body.
+    // camelCase params → snake_case wire body (via serializeCreateCustomerRequest).
     expect(JSON.parse(endpoint.lastRequest!.body)).toEqual({
-      tax_id: '12345678000190',
-      name: 'Acme Pagamentos Ltda',
+      cnpj: '12.345.678/0001-90',
+      cpf: '123.456.789-00',
       email: 'ops@acme.test',
+      name: 'Acme Pagamentos Ltda',
+      phone: '+5511999999999',
     });
-    // snake_case wire response → camelCase Customer.
+    // snake_case wire response → camelCase Customer (via deserializeCustomer).
     expect(customer).toEqual({
-      id: 'cus_1',
-      object: 'customer',
-      taxId: '12345678000190',
+      id: 'cust_1',
+      externalId: null,
       name: 'Acme Pagamentos Ltda',
       email: 'ops@acme.test',
+      phone: '+5511999999999',
+      cpf: '123.456.789-00',
+      cnpj: '12.345.678/0001-90',
+      tradingName: 'Acme',
       status: 'active',
-      createdAt: '2026-05-27T12:00:00.000Z',
+      createdAt: 1775253599,
+      updatedAt: 1775253599,
     });
   });
 });
@@ -115,17 +129,17 @@ describe('customers.get — round-trips a customer by id', () => {
     mock.mockToken();
     const endpoint = mock.mockEndpoint({
       method: 'GET',
-      path: '/v3/customers/cus_42',
-      responses: { statusCode: 200, body: wireCustomer('cus_42') },
+      path: '/v3/customers/cust_42',
+      responses: { statusCode: 200, body: wireCustomer('cust_42') },
     });
     const client = makeClient();
 
-    const customer = await client.customers.get('cus_42');
+    const customer = await client.customers.get('cust_42');
 
-    expect(endpoint.lastRequest?.path).toBe('/v3/customers/cus_42');
-    expect(customer.id).toBe('cus_42');
-    expect(customer.taxId).toBe('12345678000190');
-    expect(customer.createdAt).toBe('2026-05-27T12:00:00.000Z');
+    expect(endpoint.lastRequest?.path).toBe('/v3/customers/cust_42');
+    expect(customer.id).toBe('cust_42');
+    expect(customer.cpf).toBe('123.456.789-00');
+    expect(customer.createdAt).toBe(1775253599);
   });
 });
 
@@ -133,7 +147,7 @@ describe('customers.list — auto-pagination via for await', () => {
   it('iterates every customer across pages, threading starting_after, stopping on has_more:false', async () => {
     mock.mockToken();
     const endpoint = mock.mockCustomerPage({
-      pages: [[wireCustomer('cus_a'), wireCustomer('cus_b')], [wireCustomer('cus_c')]],
+      pages: [[wireCustomer('cust_a'), wireCustomer('cust_b')], [wireCustomer('cust_c')]],
     });
     const client = makeClient();
 
@@ -143,14 +157,14 @@ describe('customers.list — auto-pagination via for await', () => {
     }
 
     // Every item of every page, in order, terminating on has_more:false.
-    expect(collected.map((c) => c.id)).toEqual(['cus_a', 'cus_b', 'cus_c']);
+    expect(collected.map((c) => c.id)).toEqual(['cust_a', 'cust_b', 'cust_c']);
     // Items are camelCase-mapped through the public surface, not raw wire.
-    expect(collected[0]!.taxId).toBe('12345678000190');
+    expect(collected[0]!.cpf).toBe('123.456.789-00');
     // Two page fetches: page 1 (no cursor), page 2 (starting_after = last id of page 1).
     expect(endpoint.callCount).toBe(2);
     expect(endpoint.requests[0]!.path).toContain('limit=2');
     expect(endpoint.requests[0]!.path).not.toContain('starting_after');
-    expect(endpoint.requests[1]!.path).toContain('starting_after=cus_b');
+    expect(endpoint.requests[1]!.path).toContain('starting_after=cust_b');
   });
 });
 
@@ -158,7 +172,7 @@ describe('client.rate_limit — reflects X-RateLimit-* of the last response', ()
   it('is null before any call and populated from the response headers after one', async () => {
     mock.mockToken();
     mock.mockCustomer({
-      customer: wireCustomer('cus_1'),
+      customer: wireCustomer('cust_1'),
       headers: {
         'x-ratelimit-limit': '100',
         'x-ratelimit-remaining': '99',
@@ -168,7 +182,7 @@ describe('client.rate_limit — reflects X-RateLimit-* of the last response', ()
     const client = makeClient();
 
     expect(client.rate_limit).toBeNull();
-    await client.customers.create({ taxId: '12345678000190', name: 'Acme Pagamentos Ltda' });
+    await client.customers.create(CREATE_PARAMS);
 
     const rateLimit = client.rate_limit;
     expect(rateLimit).not.toBeNull();
