@@ -19,15 +19,11 @@
  * `requirement_id`, `attachment_type`, and `value` for email) plus the optional binary `file`
  * part. {@link kycUploadToFormData} turns that representation into a `FormData`.
  *
- * ⚠️ RUNTIME GAP (flagged for the orchestrator — NOT fixed here). The frozen runtime
- * (`runtime/http.ts → serializeBody`) is JSON-only: it `JSON.stringify`s any object body and
- * pins `Content-Type: application/json`. It has NO multipart seam, and `runtime/` is off-limits
- * this round (story 003 made the only allowed runtime edit). The generated code below is the
- * CORRECT, forward-compatible generator output (serialize → `KycUploadForm` → `FormData`); the
- * single runtime follow-up is to make `serializeBody` pass a `FormData`/`Blob`/binary body
- * through untouched so undici sets `multipart/form-data; boundary=…`. Until that lands, uploads
- * do not encode on the wire; the determinism (per-variant field map) is fully proven by the
- * serializer unit tests + conformance (story 008), independent of transport.
+ * ── Multipart transport (story 015) ──
+ * The runtime's `serializeBody` (`runtime/http.ts`) passes a `FormData`/`Blob`/binary body
+ * through untouched, so undici sets `multipart/form-data; boundary=…` itself. KYC uploads encode
+ * on the wire (serialize → `KycUploadForm` → `FormData`); the per-variant field map is proven by
+ * the serializer unit tests + an integration test (MockAgent) + conformance (story 008).
  *
  * ── runtime ↔ generated boundary ──
  * Lives in `generated/`. Imports only the sibling leaf module (`./common.js`); uses the Node
@@ -229,9 +225,8 @@ export function serializeKycUpload(params: KycUpload): KycUploadForm {
 /**
  * Encode a {@link KycUploadForm} into a `multipart/form-data` `FormData` (the body the upload
  * endpoint expects). Appends each scalar field, then the binary `file` part when present. Uses
- * the Node global `FormData`/`Blob`. See the RUNTIME GAP note in the module header: the frozen
- * JSON-only runtime does not yet pass a `FormData` body through, so this is the
- * forward-compatible generator output rather than a wired-up request this round.
+ * the Node global `FormData`/`Blob`. The runtime's `serializeBody` passes this `FormData` body
+ * through untouched (story 015), so undici sets `multipart/form-data; boundary=…` on the wire.
  */
 export function kycUploadToFormData(form: KycUploadForm): FormData {
   const fd = new FormData();

@@ -57,7 +57,7 @@
  * DS-MULTIPART — a `multipart/form-data` request `oneOf` → the member serializes to a field
  *   representation (`KycUploadForm`: snake_case scalar fields + an optional binary `file`),
  *   then a `FormData`. Binary (`format: binary`) → the `file` part; a plain scalar → a field.
- *   ⚠️ RUNTIME GAP: the frozen JSON-only runtime has no multipart seam (see `uploads.ts`).
+ *   The runtime's `serializeBody` passes the `FormData` body through on the wire (story 015; see `uploads.ts`).
  *
  * ── runtime ↔ generated boundary ──
  * Lives in `generated/`. Re-exports the KYC submodules; imports nothing from `runtime/`. The

@@ -36,7 +36,7 @@
  *
  * ── The 2 nested collections ──
  *   creditOffers.list       GET    /customers/{id}/credit-offers     → PagePromise
- *   kycAttachments.create   POST   /customers/{id}/kyc-attachments   (multipart — see runtime gap)
+ *   kycAttachments.create   POST   /customers/{id}/kyc-attachments   (multipart)
  *
  * ── Sub-paths (D3): the parent id is the 1st positional arg ──
  * A path like `POST /customers/{id}/bank-account` becomes `upsertBankAccount(id, params, opts?)`
@@ -349,12 +349,10 @@ export class CustomersKycAttachments {
    * {@link KycAttachmentResponse} (the full requirement state, deserialized via the discriminated
    * `deserializeKycRequirement`).
    *
-   * ⚠️ RUNTIME GAP (tracked, not fixed here): the frozen JSON-only runtime
-   * (`runtime/http.ts → serializeBody`) does not yet pass a `FormData` body through, so the
-   * multipart body is not wire-encoded this round (see `../types/kyc/uploads.ts`). The
-   * serialization (per-variant field map) is fully covered by the KYC tests + conformance
-   * (story 008), independent of transport; the single runtime follow-up makes uploads encode on
-   * the wire with no change to this method.
+   * The runtime's `serializeBody` passes the `FormData` body through untouched (story 015), so the
+   * multipart body encodes on the wire (undici sets `multipart/form-data; boundary=…`). The
+   * per-variant field map is covered by the KYC tests + an integration test + conformance
+   * (story 008); see `../types/kyc/uploads.ts`.
    */
   async create(
     customerId: string,
