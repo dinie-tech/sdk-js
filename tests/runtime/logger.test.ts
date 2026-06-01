@@ -185,8 +185,8 @@ describe('RuntimeLogger — level gating', () => {
     logger.warn('w');
     logger.info('i');
     logger.debug('d');
-    logger.logRequest({ method: 'POST', url: '/v3/customers', requestLogID: 'req_1' });
-    logger.logResponse({ status: 201, url: '/v3/customers', requestLogID: 'req_1' });
+    logger.logRequest({ method: 'POST', url: '/customers', requestLogID: 'req_1' });
+    logger.logResponse({ status: 201, url: '/customers', requestLogID: 'req_1' });
 
     expect(sink.error).not.toHaveBeenCalled();
     expect(sink.warn).not.toHaveBeenCalled();
@@ -248,7 +248,7 @@ describe('RuntimeLogger — structured request/response logging', () => {
 
     logger.logRequest({
       method: 'POST',
-      url: '/v3/customers',
+      url: '/customers',
       headers: { Authorization: 'Bearer tok', 'content-type': 'application/json' },
       body: { taxId: '123', cpf: '000', name: 'Ana' },
       requestLogID: 'req_abc',
@@ -272,7 +272,7 @@ describe('RuntimeLogger — structured request/response logging', () => {
 
     logger.logResponse({
       status: 503,
-      url: '/v3/customers',
+      url: '/customers',
       requestLogID: 'req_retry',
       retryOf: 'req_abc',
       attempt: 1,

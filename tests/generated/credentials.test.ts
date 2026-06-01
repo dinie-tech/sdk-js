@@ -64,7 +64,7 @@ describe('credentials.create — POST, idempotent, secret only on creation', () 
     mock.mockToken();
     const endpoint = mock.mockEndpoint({
       method: 'POST',
-      path: '/v3/auth/credentials',
+      path: '/auth/credentials',
       responses: {
         statusCode: 201,
         body: wireCredential('dinie_ci_new', {
@@ -82,7 +82,7 @@ describe('credentials.create — POST, idempotent, secret only on creation', () 
     });
 
     expect(endpoint.lastRequest?.method).toBe('POST');
-    expect(endpoint.lastRequest?.path).toBe('/v3/auth/credentials');
+    expect(endpoint.lastRequest?.path).toBe('/auth/credentials');
     // POST write → auto X-Idempotency-Key (R4/D9).
     expect(endpoint.lastRequest?.headers['x-idempotency-key']).toMatch(/^dinie-sdk-retry-/);
     // camelCase params → snake_case wire body (expiresAt → expires_at).
@@ -103,7 +103,7 @@ describe('credentials.create — POST, idempotent, secret only on creation', () 
     mock.mockToken();
     const endpoint = mock.mockEndpoint({
       method: 'POST',
-      path: '/v3/auth/credentials',
+      path: '/auth/credentials',
       responses: { statusCode: 201, body: wireCredential('dinie_ci_x', { client_secret: 's' }) },
     });
     const client = makeClient();
@@ -119,7 +119,7 @@ describe('credentials.list — auto-pagination via for await (has_more)', () => 
     mock.mockToken();
     const endpoint = mock.mockEndpoint({
       method: 'GET',
-      path: /^\/v3\/auth\/credentials(\?|$)/,
+      path: /^\/auth\/credentials(\?|$)/,
       responses: [
         {
           statusCode: 200,
@@ -155,7 +155,7 @@ describe('credentials.revoke — DELETE → void (204), naturally idempotent (no
     mock.mockToken();
     const endpoint = mock.mockEndpoint({
       method: 'DELETE',
-      path: '/v3/auth/credentials/dinie_ci_1',
+      path: '/auth/credentials/dinie_ci_1',
       responses: { statusCode: 204, body: '' },
     });
     const client = makeClient();
@@ -164,7 +164,7 @@ describe('credentials.revoke — DELETE → void (204), naturally idempotent (no
 
     expect(result).toBeUndefined();
     expect(endpoint.lastRequest?.method).toBe('DELETE');
-    expect(endpoint.lastRequest?.path).toBe('/v3/auth/credentials/dinie_ci_1');
+    expect(endpoint.lastRequest?.path).toBe('/auth/credentials/dinie_ci_1');
     // DELETE is naturally idempotent (§3.1 marks it "—") → no auto Idempotency-Key.
     expect(endpoint.lastRequest?.headers['x-idempotency-key']).toBeUndefined();
   });

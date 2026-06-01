@@ -7,7 +7,7 @@
  * NO `POST /credit-offers` and NO create request (R10).
  *
  * ── Hoisted to foundational on purpose ──
- * `CreditOffer` is referenced by THREE later stories: `customers.listCreditOffers` (003),
+ * `CreditOffer` is referenced by THREE later stories: `customers.creditOffers.list` (003/014),
  * the `creditOffers` resource (005), and the `credit_offer.*` webhook events (007). Defining
  * it here lets 003 and 005 stay parallelizable without cross-importing each other.
  *
@@ -57,7 +57,7 @@ export type CreditOfferStatus = 'available' | 'accepted' | 'expired';
  * the optional `customer_id` and `status` filters. The architecture §3.1 summary table only
  * lists `{limit?, startingAfter?, customerId?}`, but the contract (SoT — D2) also defines
  * `status`, so the deterministic generator output (§7.5) includes it — the same enrichment
- * `customers.listCreditOffers` (story 003) applied. Defined here (the resource's owning type
+ * `customers.creditOffers.list` (story 003) applied. Defined here (the resource's owning type
  * module) so the `creditOffers` resource (story 005) consumes it without re-importing.
  */
 export interface CreditOffersListParams {

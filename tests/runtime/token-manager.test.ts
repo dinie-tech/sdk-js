@@ -39,7 +39,7 @@ describe('TokenManager.getAccessToken', () => {
     const req = tokens.lastRequest;
     expect(req).toBeDefined();
     expect(req?.method).toBe('POST');
-    expect(req?.path).toBe('/v3/auth/token');
+    expect(req?.path).toBe('/auth/token');
     expect(req?.headers['authorization']).toBe(EXPECTED_BASIC);
     expect(req?.headers['content-type']).toBe('application/x-www-form-urlencoded');
     expect(req?.body).toBe('grant_type=client_credentials');

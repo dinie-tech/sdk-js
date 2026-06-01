@@ -54,7 +54,7 @@ async function _webhookEndpointTypes(): Promise<void> {
   expectTypeOf(
     client.webhookEndpoints.create({ url: 'https://x' }),
   ).resolves.toEqualTypeOf<WebhookEndpointWithSecret>();
-  expectTypeOf(client.webhookEndpoints.get('we_1')).resolves.toEqualTypeOf<WebhookEndpoint>();
+  expectTypeOf(client.webhookEndpoints.retrieve('we_1')).resolves.toEqualTypeOf<WebhookEndpoint>();
   expectTypeOf(
     client.webhookEndpoints.update('we_1', { status: 'disabled' }),
   ).resolves.toEqualTypeOf<WebhookEndpoint>();
@@ -63,7 +63,7 @@ async function _webhookEndpointTypes(): Promise<void> {
     client.webhookEndpoints.rotateSecret('we_1'),
   ).resolves.toEqualTypeOf<WebhookSecretRotation>();
   // A plain endpoint (get/list/update) has no `secret`.
-  const ep = await client.webhookEndpoints.get('we_1');
+  const ep = await client.webhookEndpoints.retrieve('we_1');
   // @ts-expect-error secret is creation/rotation-only.
   void ep.secret;
 }
@@ -74,7 +74,7 @@ describe('webhookEndpoints.create — POST, idempotent, secret only on creation'
     mock.mockToken();
     const endpoint = mock.mockEndpoint({
       method: 'POST',
-      path: '/v3/webhooks/endpoints',
+      path: '/webhooks/endpoints',
       responses: {
         statusCode: 201,
         body: wireEndpoint('we_new', { secret: 'whsec_a1b2c3d4' }),
@@ -89,7 +89,7 @@ describe('webhookEndpoints.create — POST, idempotent, secret only on creation'
     });
 
     expect(endpoint.lastRequest?.method).toBe('POST');
-    expect(endpoint.lastRequest?.path).toBe('/v3/webhooks/endpoints');
+    expect(endpoint.lastRequest?.path).toBe('/webhooks/endpoints');
     expect(endpoint.lastRequest?.headers['x-idempotency-key']).toMatch(/^dinie-sdk-retry-/);
     // camelCase params → snake_case wire body (all fields present here).
     expect(JSON.parse(endpoint.lastRequest!.body)).toEqual({
@@ -105,20 +105,20 @@ describe('webhookEndpoints.create — POST, idempotent, secret only on creation'
   });
 });
 
-describe('webhookEndpoints.get — round-trips an endpoint by id', () => {
+describe('webhookEndpoints.retrieve — round-trips an endpoint by id', () => {
   it('GETs the resource path and maps the wire response to a camelCase WebhookEndpoint (no secret)', async () => {
     mock.mockToken();
     const endpoint = mock.mockEndpoint({
       method: 'GET',
-      path: '/v3/webhooks/endpoints/we_42',
+      path: '/webhooks/endpoints/we_42',
       responses: { statusCode: 200, body: wireEndpoint('we_42') },
     });
     const client = makeClient();
 
-    const ep = await client.webhookEndpoints.get('we_42');
+    const ep = await client.webhookEndpoints.retrieve('we_42');
 
     expect(endpoint.lastRequest?.method).toBe('GET');
-    expect(endpoint.lastRequest?.path).toBe('/v3/webhooks/endpoints/we_42');
+    expect(endpoint.lastRequest?.path).toBe('/webhooks/endpoints/we_42');
     expect(ep.id).toBe('we_42');
     expect(ep.url).toBe('https://parceiro.example.com/webhooks/dinie');
     expect(ep.createdAt).toBe(1772791200);
@@ -131,7 +131,7 @@ describe('webhookEndpoints.list — auto-pagination via for await (has_more)', (
     mock.mockToken();
     const endpoint = mock.mockEndpoint({
       method: 'GET',
-      path: /^\/v3\/webhooks\/endpoints(\?|$)/,
+      path: /^\/webhooks\/endpoints(\?|$)/,
       responses: [
         {
           statusCode: 200,
@@ -161,7 +161,7 @@ describe('webhookEndpoints.update — PATCH, idempotent, partial body', () => {
     mock.mockToken();
     const endpoint = mock.mockEndpoint({
       method: 'PATCH',
-      path: '/v3/webhooks/endpoints/we_1',
+      path: '/webhooks/endpoints/we_1',
       responses: {
         statusCode: 200,
         body: wireEndpoint('we_1', { events: ['customer.*', 'loan.*'], status: 'disabled' }),
@@ -175,7 +175,7 @@ describe('webhookEndpoints.update — PATCH, idempotent, partial body', () => {
     });
 
     expect(endpoint.lastRequest?.method).toBe('PATCH');
-    expect(endpoint.lastRequest?.path).toBe('/v3/webhooks/endpoints/we_1');
+    expect(endpoint.lastRequest?.path).toBe('/webhooks/endpoints/we_1');
     // PATCH write → auto X-Idempotency-Key (even though the openapi op omits the param — §7.4).
     expect(endpoint.lastRequest?.headers['x-idempotency-key']).toMatch(/^dinie-sdk-retry-/);
     // Only the keys the caller set are emitted (R-OPTIONAL).
@@ -193,7 +193,7 @@ describe('webhookEndpoints.delete — DELETE → void (204), naturally idempoten
     mock.mockToken();
     const endpoint = mock.mockEndpoint({
       method: 'DELETE',
-      path: '/v3/webhooks/endpoints/we_1',
+      path: '/webhooks/endpoints/we_1',
       responses: { statusCode: 204, body: '' },
     });
     const client = makeClient();
@@ -202,7 +202,7 @@ describe('webhookEndpoints.delete — DELETE → void (204), naturally idempoten
 
     expect(result).toBeUndefined();
     expect(endpoint.lastRequest?.method).toBe('DELETE');
-    expect(endpoint.lastRequest?.path).toBe('/v3/webhooks/endpoints/we_1');
+    expect(endpoint.lastRequest?.path).toBe('/webhooks/endpoints/we_1');
     expect(endpoint.lastRequest?.headers['x-idempotency-key']).toBeUndefined();
   });
 });
@@ -212,7 +212,7 @@ describe('webhookEndpoints.rotateSecret — POST sub-path, idempotent, returns a
     mock.mockToken();
     const endpoint = mock.mockEndpoint({
       method: 'POST',
-      path: '/v3/webhooks/endpoints/we_1/rotate-secret',
+      path: '/webhooks/endpoints/we_1/rotate-secret',
       responses: {
         statusCode: 200,
         body: {
@@ -227,7 +227,7 @@ describe('webhookEndpoints.rotateSecret — POST sub-path, idempotent, returns a
     const rotation = await client.webhookEndpoints.rotateSecret('we_1', { expireCurrentIn: 3600 });
 
     expect(endpoint.lastRequest?.method).toBe('POST');
-    expect(endpoint.lastRequest?.path).toBe('/v3/webhooks/endpoints/we_1/rotate-secret');
+    expect(endpoint.lastRequest?.path).toBe('/webhooks/endpoints/we_1/rotate-secret');
     expect(endpoint.lastRequest?.headers['x-idempotency-key']).toMatch(/^dinie-sdk-retry-/);
     // Optional grace-period param → snake_case wire body (expireCurrentIn → expire_current_in).
     expect(JSON.parse(endpoint.lastRequest!.body)).toEqual({ expire_current_in: 3600 });
@@ -241,7 +241,7 @@ describe('webhookEndpoints.rotateSecret — POST sub-path, idempotent, returns a
     mock.mockToken();
     const endpoint = mock.mockEndpoint({
       method: 'POST',
-      path: '/v3/webhooks/endpoints/we_2/rotate-secret',
+      path: '/webhooks/endpoints/we_2/rotate-secret',
       responses: {
         statusCode: 200,
         body: { id: 'we_2', secret: 'whsec_x', previous_secret_expires_at: 1 },

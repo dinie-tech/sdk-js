@@ -36,7 +36,7 @@ async function readmeQuickstart(dinie: Dinie, offerId: string): Promise<void> {
   void customer.id;
 
   // 3) fetch the offer (arrived via webhook) and simulate.
-  const offer = await dinie.creditOffers.get(offerId);
+  const offer = await dinie.creditOffers.retrieve(offerId);
   const sim = await dinie.creditOffers.createSimulation(offer.id, {
     requestedAmount: 500000,
     installmentCount: 12,
@@ -52,13 +52,17 @@ async function readmeQuickstart(dinie: Dinie, offerId: string): Promise<void> {
   });
 
   // 5) follow the loan.
-  const current = await dinie.loans.get(loan.id);
+  const current = await dinie.loans.retrieve(loan.id);
   void current.status;
   void current.signingUrl;
 
   // pagination — `for await` over a PagePromise; `/banks` is a flat list.
   for await (const c of dinie.customers.list({ limit: 50 })) {
     void c.id;
+  }
+  // nested collection — a customer's credit offers (`customers.creditOffers.list`).
+  for await (const o of dinie.customers.creditOffers.list(customer.id, { limit: 50 })) {
+    void o.id;
   }
   const banks = await dinie.banks.list();
   void banks.length;
@@ -100,7 +104,7 @@ function readmeWebhookHandler(raw: {
 /** Error handling (README §Tratamento de erros). */
 async function readmeErrorHandling(dinie: Dinie): Promise<void> {
   try {
-    await dinie.loans.get('ln_inexistente');
+    await dinie.loans.retrieve('ln_inexistente');
   } catch (err) {
     if (err instanceof NotFoundError) {
       void err.status;
@@ -123,7 +127,7 @@ function readmeConstruct(): Dinie {
   const dinie = new Dinie({
     clientId: 'test-client',
     clientSecret: 'test-secret',
-    baseUrl: 'https://staging.dinie.com.br',
+    baseUrl: 'https://sandbox.api.dinie.com.br/api/v3',
     logLevel: 'debug',
     idempotency: true,
   });

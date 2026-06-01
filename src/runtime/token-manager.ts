@@ -4,7 +4,7 @@
  * Acquires and transparently refreshes the Bearer token the rest of the SDK rides
  * on. The Dinie token endpoint speaks RFC 6749 client_credentials:
  *
- *   POST {baseUrl}/v3/auth/token
+ *   POST {baseUrl}/auth/token
  *   Authorization: Basic base64("{clientId}:{clientSecret}")
  *   Content-Type:  application/x-www-form-urlencoded
  *   body:          grant_type=client_credentials
@@ -37,7 +37,7 @@ import type { Dispatcher } from 'undici';
 import { OAuthError } from './errors.js';
 
 /** Token endpoint path, appended to the configured `baseUrl`. */
-const TOKEN_PATH = '/v3/auth/token';
+const TOKEN_PATH = '/auth/token';
 
 /**
  * Refresh the token this many milliseconds BEFORE its stated expiry (300s). The
@@ -50,13 +50,16 @@ const REFRESH_MARGIN_MS = 300_000;
 export interface TokenManagerOptions {
   clientId: string;
   clientSecret: string;
-  /** API origin (e.g. `https://api.dinie.com.br`); the token path is resolved against it. */
+  /**
+   * API base URL incl. the version prefix (e.g. `https://api.dinie.com.br/api/v3`); the bare
+   * token path is resolved against it, preserving the base pathname.
+   */
   baseUrl: string;
   /** Injected undici transport — production passes a `Pool`, tests a `MockAgent`. */
   dispatcher: Dispatcher;
 }
 
-/** Wire response of `POST /v3/auth/token` (architecture §4.3). */
+/** Wire response of `POST /auth/token` (architecture §4.3). */
 interface TokenResponse {
   access_token: string;
   token_type: 'Bearer';
@@ -91,7 +94,12 @@ export class TokenManager {
   constructor(options: TokenManagerOptions) {
     this.#clientId = options.clientId;
     this.#clientSecret = options.clientSecret;
-    this.#tokenUrl = new URL(TOKEN_PATH, options.baseUrl);
+    // Preserve the base pathname (e.g. `/api/v3`) that the bare, absolute TOKEN_PATH would
+    // otherwise REPLACE: join `basePath + '/auth/token'` against the origin so the token URL
+    // matches the openapi server (`…/api/v3/auth/token`). An origin-only base yields `/auth/token`.
+    const base = new URL(options.baseUrl);
+    const basePath = base.pathname.replace(/\/+$/, '');
+    this.#tokenUrl = new URL(`${basePath}${TOKEN_PATH}`, base.origin);
     this.#dispatcher = options.dispatcher;
   }
 

@@ -5,9 +5,9 @@
  * snake_case bridge to the per-type generated serializers, methods alphabetical.
  *
  * ── The 3 methods (alphabetical — minimal diff for the V0.4 generator) ──
- *   create   POST     /v3/auth/credentials              → CredentialWithSecret (201, idempotent)
- *   list     GET      /v3/auth/credentials              → PagePromise<Credential>
- *   revoke   DELETE   /v3/auth/credentials/{client_id}  → void (204)
+ *   create   POST     /auth/credentials              → CredentialWithSecret (201, idempotent)
+ *   list     GET      /auth/credentials              → PagePromise<Credential>
+ *   revoke   DELETE   /auth/credentials/{client_id}  → void (204)
  *
  * ── Method naming (§7.1 — strip the resource noun) ──
  *   createCredential → create   (strip `Credential`)
@@ -59,7 +59,7 @@ import {
 } from '../types/credential.js';
 
 /** Path of the credentials collection. */
-const CREDENTIALS_PATH = '/v3/auth/credentials';
+const CREDENTIALS_PATH = '/auth/credentials';
 
 /** Path of a single credential. */
 function credentialPath(clientId: string): string {
@@ -79,7 +79,7 @@ export class Credentials {
   }
 
   /**
-   * Create an API credential. `POST /v3/auth/credentials` (idempotent — the runtime mints a
+   * Create an API credential. `POST /auth/credentials` (idempotent — the runtime mints a
    * stable `X-Idempotency-Key` reused across retries). The wire `201` response is the ONLY place
    * the `clientSecret` appears, so the result is a {@link CredentialWithSecret} (store the secret
    * securely — it cannot be retrieved again).
@@ -126,7 +126,7 @@ export class Credentials {
 
   /**
    * Revoke an API credential immediately and permanently. `DELETE
-   * /v3/auth/credentials/{client_id}`. Returns `void` (the contract replies `204` with an empty
+   * /auth/credentials/{client_id}`. Returns `void` (the contract replies `204` with an empty
    * body). Revoking the last active credential fails `409` (`code: last_active_credential`),
    * surfaced as a `ConflictError` discriminable by `err.code`.
    */

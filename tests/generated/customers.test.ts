@@ -104,7 +104,7 @@ describe('transparent OAuth2 — the partner never touches /auth/token', () => {
     const created = mock.mockCustomer({ customer: wireCustomer('cust_1') });
     const fetched = mock.mockEndpoint({
       method: 'GET',
-      path: '/v3/customers/cust_1',
+      path: '/customers/cust_1',
       responses: { statusCode: 200, body: wireCustomer('cust_1') },
     });
     const client = makeClient();
@@ -113,11 +113,11 @@ describe('transparent OAuth2 — the partner never touches /auth/token', () => {
     // token. The SDK acquires one transparently on the first call …
     await client.customers.create(CREATE_PARAMS);
     // … and reuses the cached token on the second (no second token POST).
-    await client.customers.get('cust_1');
+    await client.customers.retrieve('cust_1');
 
     expect(tokens.callCount).toBe(1);
     expect(tokens.lastRequest?.method).toBe('POST');
-    expect(tokens.lastRequest?.path).toBe('/v3/auth/token');
+    expect(tokens.lastRequest?.path).toBe('/auth/token');
     // Both resource calls carried the Bearer minted by that single token POST.
     expect(created.lastRequest?.headers['authorization']).toBe('Bearer dinie-test-access-token-1');
     expect(fetched.lastRequest?.headers['authorization']).toBe('Bearer dinie-test-access-token-1');
@@ -159,19 +159,19 @@ describe('customers.create — auto idempotency + camelCase ↔ snake_case mappi
   });
 });
 
-describe('customers.get — round-trips a customer by id', () => {
+describe('customers.retrieve — round-trips a customer by id', () => {
   it('GETs the resource path and maps the wire response to a camelCase Customer', async () => {
     mock.mockToken();
     const endpoint = mock.mockEndpoint({
       method: 'GET',
-      path: '/v3/customers/cust_42',
+      path: '/customers/cust_42',
       responses: { statusCode: 200, body: wireCustomer('cust_42') },
     });
     const client = makeClient();
 
-    const customer = await client.customers.get('cust_42');
+    const customer = await client.customers.retrieve('cust_42');
 
-    expect(endpoint.lastRequest?.path).toBe('/v3/customers/cust_42');
+    expect(endpoint.lastRequest?.path).toBe('/customers/cust_42');
     expect(customer.id).toBe('cust_42');
     expect(customer.cpf).toBe('123.456.789-00');
     expect(customer.createdAt).toBe(1775253599);
@@ -233,7 +233,7 @@ describe('customers.update — PATCH with idempotency + camelCase mapping', () =
     mock.mockToken();
     const endpoint = mock.mockEndpoint({
       method: 'PATCH',
-      path: '/v3/customers/cust_1',
+      path: '/customers/cust_1',
       responses: { statusCode: 200, body: wireCustomer('cust_1', { email: 'new@acme.test' }) },
     });
     const client = makeClient();
@@ -241,7 +241,7 @@ describe('customers.update — PATCH with idempotency + camelCase mapping', () =
     const customer = await client.customers.update('cust_1', { email: 'new@acme.test' });
 
     expect(endpoint.lastRequest?.method).toBe('PATCH');
-    expect(endpoint.lastRequest?.path).toBe('/v3/customers/cust_1');
+    expect(endpoint.lastRequest?.path).toBe('/customers/cust_1');
     // PATCH is a write → auto Idempotency-Key (D9).
     expect(endpoint.lastRequest?.headers['x-idempotency-key']).toMatch(/^dinie-sdk-retry-/);
     // Only the set field is sent (PATCH subset via serializeUpdateCustomerRequest).
@@ -251,19 +251,19 @@ describe('customers.update — PATCH with idempotency + camelCase mapping', () =
   });
 });
 
-describe('customers.getBankAccount — GET sub-path + snake→camel mapping', () => {
+describe('customers.retrieveBankAccount — GET sub-path + snake→camel mapping', () => {
   it('GETs /bank-account and maps the wire account to a camelCase CustomerBankAccount', async () => {
     mock.mockToken();
     const endpoint = mock.mockEndpoint({
       method: 'GET',
-      path: '/v3/customers/cust_1/bank-account',
+      path: '/customers/cust_1/bank-account',
       responses: { statusCode: 200, body: wireBankAccount() },
     });
     const client = makeClient();
 
-    const account = await client.customers.getBankAccount('cust_1');
+    const account = await client.customers.retrieveBankAccount('cust_1');
 
-    expect(endpoint.lastRequest?.path).toBe('/v3/customers/cust_1/bank-account');
+    expect(endpoint.lastRequest?.path).toBe('/customers/cust_1/bank-account');
     expect(account).toEqual({
       id: 'ba_1',
       bankId: '001',
@@ -282,7 +282,7 @@ describe('customers.upsertBankAccount — POST wraps the body + idempotent', () 
     mock.mockToken();
     const endpoint = mock.mockEndpoint({
       method: 'POST',
-      path: '/v3/customers/cust_1/bank-account',
+      path: '/customers/cust_1/bank-account',
       responses: { statusCode: 200, body: wireBankAccount() },
     });
     const client = makeClient();
@@ -318,7 +318,7 @@ describe('customers.createBiometricsSession — POST with no request body', () =
     mock.mockToken();
     const endpoint = mock.mockEndpoint({
       method: 'POST',
-      path: '/v3/customers/cust_1/biometrics',
+      path: '/customers/cust_1/biometrics',
       responses: {
         statusCode: 200,
         body: {
@@ -332,7 +332,7 @@ describe('customers.createBiometricsSession — POST with no request body', () =
     const session = await client.customers.createBiometricsSession('cust_1');
 
     expect(endpoint.lastRequest?.method).toBe('POST');
-    expect(endpoint.lastRequest?.path).toBe('/v3/customers/cust_1/biometrics');
+    expect(endpoint.lastRequest?.path).toBe('/customers/cust_1/biometrics');
     // The contract defines NO request body — the SDK sends none.
     expect(endpoint.lastRequest?.body).toBe('');
     // Still an idempotent write.
@@ -347,7 +347,7 @@ describe('customers.createBiometricsSession — POST with no request body', () =
     mock.mockToken();
     const endpoint = mock.mockEndpoint({
       method: 'POST',
-      path: '/v3/customers/cust_1/biometrics',
+      path: '/customers/cust_1/biometrics',
       responses: { statusCode: 200, body: { session_url: 'https://x', expires_at: 1 } },
     });
     const client = makeClient();
@@ -358,12 +358,12 @@ describe('customers.createBiometricsSession — POST with no request body', () =
   });
 });
 
-describe('customers.listCreditOffers — auto-pagination over a customer sub-path', () => {
+describe('customers.creditOffers.list — auto-pagination over a customer sub-path', () => {
   it('iterates offers across pages, threads starting_after, maps snake→camel', async () => {
     mock.mockToken();
     const endpoint = mock.mockEndpoint({
       method: 'GET',
-      path: /^\/v3\/customers\/cust_1\/credit-offers(\?|$)/,
+      path: /^\/customers\/cust_1\/credit-offers(\?|$)/,
       responses: [
         {
           statusCode: 200,
@@ -375,7 +375,7 @@ describe('customers.listCreditOffers — auto-pagination over a customer sub-pat
     const client = makeClient();
 
     const collected: CreditOffer[] = [];
-    for await (const offer of client.customers.listCreditOffers('cust_1', { limit: 2 })) {
+    for await (const offer of client.customers.creditOffers.list('cust_1', { limit: 2 })) {
       collected.push(offer);
     }
 
@@ -394,12 +394,12 @@ describe('customers.listCreditOffers — auto-pagination over a customer sub-pat
     mock.mockToken();
     const endpoint = mock.mockEndpoint({
       method: 'GET',
-      path: /^\/v3\/customers\/cust_1\/credit-offers(\?|$)/,
+      path: /^\/customers\/cust_1\/credit-offers(\?|$)/,
       responses: { statusCode: 200, body: { data: [], has_more: false } },
     });
     const client = makeClient();
 
-    await client.customers.listCreditOffers('cust_1', { status: 'available' });
+    await client.customers.creditOffers.list('cust_1', { status: 'available' });
 
     expect(endpoint.lastRequest?.path).toContain('status=available');
   });
@@ -431,7 +431,7 @@ describe('cancellation — options.signal aborts the request', () => {
     mock.mockToken();
     mock.mockEndpoint({
       method: 'GET',
-      path: '/v3/customers/cust_1',
+      path: '/customers/cust_1',
       responses: { statusCode: 200, body: wireCustomer('cust_1') },
     });
     const client = makeClient();
@@ -440,7 +440,7 @@ describe('cancellation — options.signal aborts the request', () => {
     controller.abort();
 
     await expect(
-      client.customers.get('cust_1', { signal: controller.signal }),
+      client.customers.retrieve('cust_1', { signal: controller.signal }),
     ).rejects.toBeInstanceOf(APIConnectionError);
   });
 });

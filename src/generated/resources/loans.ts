@@ -3,19 +3,23 @@
  * Hand-authored in V0.2 to mirror future generator output (D1); V0.4 overwrites it. A mechanical
  * copy of the `customers.ts` convention (story 003): inject the {@link HttpClient}, delegate the
  * camelCase ↔ snake_case bridge to the per-type generated serializers, methods alphabetical.
+ * Story 014 applied the canonical naming refactor (`get`→`retrieve`) and moved the COLLECTION
+ * sub-resource `transactions` into a nested namespace.
  *
- * ── The 3 methods (alphabetical — minimal diff for the V0.4 generator) ──
- *   create             POST   /v3/loans                       → Loan (201, idempotent)
- *   get                GET    /v3/loans/{id}                   → Loan
- *   listTransactions   GET    /v3/loans/{id}/transactions      → PagePromise<Transaction>
+ * ── The 2 flat methods (alphabetical — minimal diff for the V0.4 generator) ──
+ *   create     POST   /loans          → Loan (201, idempotent)
+ *   retrieve   GET    /loans/{id}      → Loan
  *
- * ── Method naming (§7.1 — strip the resource noun) ──
- *   createLoan       → create   (strip `Loan`)
- *   getLoan          → get      (strip `Loan`)
- *   listTransactions → listTransactions  (no resource noun to strip — `Transaction` ≠ `Loan`)
+ * ── The 1 nested collection ──
+ *   transactions.list   GET   /loans/{id}/transactions   → PagePromise<Transaction>
+ *
+ * ── Naming convention (principles.md §1 — canonical CRUD verbs) ──
+ *   createLoan       → create     (strip `Loan`)
+ *   getLoan          → retrieve   (strip `Loan`, `get`→`retrieve`)
+ *   listTransactions → transactions.list  (COLLECTION → nested namespace; principles.md §2)
  *
  * ── Sub-path (D3): the parent id is the 1st positional arg ──
- * `GET /loans/{id}/transactions` becomes `listTransactions(id, params?, opts?)` — the `{loan_id}`
+ * `GET /loans/{id}/transactions` becomes `transactions.list(id, params?, opts?)` — the `{loan_id}`
  * segment is the leading `id`, `encodeURIComponent`-escaped.
  *
  * ── `create` body (contract-confirmed) ──
@@ -26,7 +30,8 @@
  * ── runtime ↔ generated boundary ──
  * Lives in `generated/`. Imports ONLY from `runtime/` (`HttpClient`, `RequestOptions`,
  * `PagePromise`/`FetchPage`, `ListEnvelope`) plus sibling generated types — never the reverse.
- * The `HttpClient` is injected by `client.ts`; this class never builds one.
+ * The `HttpClient` is injected by `client.ts`; this class never builds one. The nested
+ * `transactions` namespace receives the SAME injected `HttpClient`.
  */
 
 import type { HttpClient, ListEnvelope, RequestOptions } from '../../runtime/http.js';
@@ -46,7 +51,7 @@ import {
 } from '../types/transaction.js';
 
 /** Path of the loans collection. */
-const LOANS_PATH = '/v3/loans';
+const LOANS_PATH = '/loans';
 
 /** Path of a single loan (sub-paths hang off this). */
 function loanPath(id: string): string {
@@ -56,17 +61,22 @@ function loanPath(id: string): string {
 /**
  * The loans resource, composed onto `client.loans` by `Dinie` (architecture §6). Holds the
  * injected {@link HttpClient}; the casing bridge is delegated to the generated serializers
- * (story 002). Methods are alphabetical.
+ * (story 002). Flat methods are alphabetical; the `transactions` collection hangs off the nested
+ * {@link LoansTransactions} namespace.
  */
 export class Loans {
   readonly #http: HttpClient;
 
+  /** A loan's installment transactions (collection → nested namespace). `loans.transactions.list(id)`. */
+  readonly transactions: LoansTransactions;
+
   constructor(http: HttpClient) {
     this.#http = http;
+    this.transactions = new LoansTransactions(http);
   }
 
   /**
-   * Create a loan from a credit offer and accepted simulation. `POST /v3/loans` (idempotent — the
+   * Create a loan from a credit offer and accepted simulation. `POST /loans` (idempotent — the
    * runtime mints a stable `X-Idempotency-Key` reused across retries). The CCB contract is
    * generated synchronously; the loan starts in `awaiting_signatures`. The camelCase request is
    * serialized to the wire body and the wire response (201) deserialized to a {@link Loan}.
@@ -82,8 +92,8 @@ export class Loans {
     return deserializeLoan(wire);
   }
 
-  /** Retrieve a loan by id. `GET /v3/loans/{id}`. */
-  async get(id: string, options?: RequestOptions): Promise<Loan> {
+  /** Retrieve a loan by id. `GET /loans/{id}`. */
+  async retrieve(id: string, options?: RequestOptions): Promise<Loan> {
     const wire = await this.#http.request<LoanWire>({
       method: 'GET',
       path: loanPath(id),
@@ -92,16 +102,30 @@ export class Loans {
     });
     return deserializeLoan(wire);
   }
+}
+
+/**
+ * Nested namespace for a loan's installment transactions (`client.loans.transactions`). A
+ * COLLECTION sub-resource (0..N transactions per loan) → nested namespace (principles.md §2).
+ * Holds the SAME injected {@link HttpClient} as its parent {@link Loans}.
+ */
+export class LoansTransactions {
+  readonly #http: HttpClient;
+
+  constructor(http: HttpClient) {
+    this.#http = http;
+  }
 
   /**
-   * List a loan's installment transactions, auto-paginated. `GET /v3/loans/{id}/transactions`.
+   * List a loan's installment transactions, auto-paginated. `GET /loans/{id}/transactions`.
    * Returns a {@link PagePromise}<{@link Transaction}> with the same dual nature as the other
-   * `list*` methods: `await` for the first page, `for await` to stream every transaction, or
-   * `.withResponse()` for the first page's HTTP response. `params.limit`/`startingAfter` and the
-   * paginator cursor drive pagination (mapped to the wire `limit`/`starting_after` query params).
+   * `list` methods: `await` for the first page, `for await` to stream every transaction, or
+   * `.withResponse()` for the first page's HTTP response. `loanId` is the parent id (1st
+   * positional arg); `params.limit`/`startingAfter` and the paginator cursor drive pagination
+   * (mapped to the wire `limit`/`starting_after` query params).
    */
-  listTransactions(
-    id: string,
+  list(
+    loanId: string,
     params?: LoanTransactionsListParams,
     options?: RequestOptions,
   ): PagePromise<Transaction> {
@@ -110,7 +134,7 @@ export class Loans {
       return this.#http
         .requestPage<TransactionWire>({
           method: 'GET',
-          path: `${loanPath(id)}/transactions`,
+          path: `${loanPath(loanId)}/transactions`,
           query: {
             ...(params?.limit !== undefined ? { limit: params.limit } : {}),
             ...(startingAfter !== undefined ? { starting_after: startingAfter } : {}),

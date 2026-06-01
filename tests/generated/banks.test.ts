@@ -41,11 +41,11 @@ async function _banksTypes(): Promise<void> {
 void _banksTypes;
 
 describe('banks.list — flat directory (NOT paginated — §7.5)', () => {
-  it('GETs /v3/banks once and returns the full deserialized Bank[] (no has_more, no cursor)', async () => {
+  it('GETs /banks once and returns the full deserialized Bank[] (no has_more, no cursor)', async () => {
     mock.mockToken();
     const endpoint = mock.mockEndpoint({
       method: 'GET',
-      path: '/v3/banks',
+      path: '/banks',
       // Flat `{ data }` envelope — deliberately NO `has_more` (the contract's shape).
       responses: {
         statusCode: 200,
@@ -75,7 +75,7 @@ describe('banks.list — flat directory (NOT paginated — §7.5)', () => {
     // Exactly ONE call — no follow-up page fetch (the list is not cursor-paginated).
     expect(endpoint.callCount).toBe(1);
     expect(endpoint.lastRequest?.method).toBe('GET');
-    expect(endpoint.lastRequest?.path).toBe('/v3/banks');
+    expect(endpoint.lastRequest?.path).toBe('/banks');
     // GET read → no Idempotency-Key.
     expect(endpoint.lastRequest?.headers['x-idempotency-key']).toBeUndefined();
   });
@@ -84,7 +84,7 @@ describe('banks.list — flat directory (NOT paginated — §7.5)', () => {
     mock.mockToken();
     mock.mockEndpoint({
       method: 'GET',
-      path: '/v3/banks',
+      path: '/banks',
       responses: { statusCode: 200, body: { data: [] } },
     });
     const client = makeClient();

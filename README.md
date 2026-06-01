@@ -34,24 +34,29 @@ import { Dinie } from '@dinie/sdk';
 const dinie = new Dinie({
   clientId: process.env.DINIE_CLIENT_ID!,
   clientSecret: process.env.DINIE_CLIENT_SECRET!,
-  baseUrl: 'https://staging.dinie.com.br',
+  // omita p/ usar produção; o sandbox carrega o mesmo prefixo de versão `/api/v3`:
+  baseUrl: 'https://sandbox.api.dinie.com.br/api/v3',
 });
 ```
+
+> **A `baseUrl` carrega o prefixo de versão `/api/v3`** (o `servers` do openapi). Os paths dos
+> resources são "bare" (`/customers`, `/loans/{id}`), então a versão vive na base — uma `baseUrl`
+> custom **deve** incluir `/api/v3` (ex.: `https://sandbox.api.dinie.com.br/api/v3`).
 
 Toda opção tem default; `clientId` e `clientSecret` são obrigatórios (via argumento **ou**
 env var). As env vars são resolvidas quando o campo correspondente é omitido:
 
-| Opção          | Default       | Env var               | Descrição                                           |
-| -------------- | ------------- | --------------------- | --------------------------------------------------- |
-| `clientId`     | —             | `DINIE_CLIENT_ID`     | Client id do OAuth2 (obrigatório).                  |
-| `clientSecret` | —             | `DINIE_CLIENT_SECRET` | Client secret do OAuth2 (obrigatório).              |
-| `baseUrl`      | produção      | `DINIE_BASE_URL`      | URL base da API (ex.: staging).                     |
-| `timeout`      | `30000` (ms)  | —                     | Timeout por requisição.                             |
-| `maxRetries`   | `3`           | —                     | Tentativas para erros retryable (`429`/`5xx`/rede). |
-| `logLevel`     | `'off'`       | `DINIE_LOG`           | `'off' \| 'error' \| 'warn' \| 'info' \| 'debug'`.  |
-| `logger`       | console       | —                     | Logger custom (ver [Logging](#logging)).            |
-| `idempotency`  | `true`        | —                     | Opt-out global de idempotency-key (foot-gun).       |
-| `dispatcher`   | `undici.Pool` | —                     | Seam de transporte (injeção de `undici` em testes). |
+| Opção          | Default                           | Env var               | Descrição                                           |
+| -------------- | --------------------------------- | --------------------- | --------------------------------------------------- |
+| `clientId`     | —                                 | `DINIE_CLIENT_ID`     | Client id do OAuth2 (obrigatório).                  |
+| `clientSecret` | —                                 | `DINIE_CLIENT_SECRET` | Client secret do OAuth2 (obrigatório).              |
+| `baseUrl`      | `https://api.dinie.com.br/api/v3` | `DINIE_BASE_URL`      | URL base da API **incluindo** `/api/v3`.            |
+| `timeout`      | `30000` (ms)                      | —                     | Timeout por requisição.                             |
+| `maxRetries`   | `3`                               | —                     | Tentativas para erros retryable (`429`/`5xx`/rede). |
+| `logLevel`     | `'off'`                           | `DINIE_LOG`           | `'off' \| 'error' \| 'warn' \| 'info' \| 'debug'`.  |
+| `logger`       | console                           | —                     | Logger custom (ver [Logging](#logging)).            |
+| `idempotency`  | `true`                            | —                     | Opt-out global de idempotency-key (foot-gun).       |
+| `dispatcher`   | `undici.Pool`                     | —                     | Seam de transporte (injeção de `undici` em testes). |
 
 O getter `client.rateLimit` (camelCase) expõe o último estado de rate-limit visto
 (`{ limit, remaining, resetAt }`, ou `null` antes da primeira resposta) — populado dos
@@ -78,7 +83,7 @@ import { Dinie, Webhooks } from '@dinie/sdk';
 const dinie = new Dinie({
   clientId: process.env.DINIE_CLIENT_ID!,
   clientSecret: process.env.DINIE_CLIENT_SECRET!,
-  baseUrl: process.env.DINIE_BASE_URL ?? 'https://staging.dinie.com.br',
+  baseUrl: process.env.DINIE_BASE_URL ?? 'https://sandbox.api.dinie.com.br/api/v3',
 });
 
 // 1) Cria o cliente — cpf + cnpj + email + phone (sem `taxId`; o id retornado é `cust_…`).
@@ -96,7 +101,7 @@ const customer = await dinie.customers.create({
 const offerId = '<co_… vindo do webhook credit_offer.available>';
 
 // 3) Busca a oferta e simula.
-const offer = await dinie.creditOffers.get(offerId);
+const offer = await dinie.creditOffers.retrieve(offerId);
 const sim = await dinie.creditOffers.createSimulation(offer.id, {
   requestedAmount: 500000, // BRL
   installmentCount: 12,
@@ -112,7 +117,7 @@ const loan = await dinie.loans.create({
 });
 
 // 5) Acompanha o empréstimo (status: awaiting_signatures → processing → active).
-const current = await dinie.loans.get(loan.id);
+const current = await dinie.loans.retrieve(loan.id);
 console.log(current.status, current.signingUrl);
 ```
 
@@ -186,7 +191,7 @@ Toda resposta de erro do servidor vira uma classe tipada que estende `APIStatusE
 import { Dinie, NotFoundError, ValidationError, RateLimitError, parseRetryAfter } from '@dinie/sdk';
 
 try {
-  await dinie.loans.get('ln_inexistente');
+  await dinie.loans.retrieve('ln_inexistente');
 } catch (err) {
   if (err instanceof NotFoundError) {
     console.error('não encontrado', err.status, err.code, err.request_id);
@@ -220,6 +225,23 @@ for await (const customer of dinie.customers.list({ limit: 50 })) {
   console.log(customer.id);
 }
 ```
+
+Sub-recursos que são **coleções** (0..N por pai) vivem em **namespaces aninhados** — o id do
+pai é o primeiro argumento (mesmo padrão de `client.beta.threads.messages` da OpenAI):
+
+```typescript
+// ofertas de crédito de um cliente (coleção → namespace aninhado)
+for await (const offer of dinie.customers.creditOffers.list(customerId, { limit: 50 })) {
+  console.log(offer.id);
+}
+// transações de um empréstimo
+for await (const tx of dinie.loans.transactions.list(loanId)) {
+  console.log(tx.id, tx.status);
+}
+```
+
+Sub-recursos **singleton** (≤1 por pai — `bank-account`, `biometrics`) permanecem métodos
+planos no pai: `dinie.customers.retrieveBankAccount(customerId)`.
 
 `await` num `PagePromise` devolve a **primeira** página (`Page<T>`); `.withResponse()`
 expõe a resposta HTTP. Recursos sem `has_more` no contrato — como `/banks` — retornam uma

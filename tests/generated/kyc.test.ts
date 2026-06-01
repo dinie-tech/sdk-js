@@ -4,7 +4,7 @@
  * (9) and per `KycUpload` variant (10), the nested identity CNH|RG dispatch, the CNH
  * attachments collapse, a `*Submitted` / `KycAttachmentResponse` round-trip, the multipart
  * `FormData` framing, unknown-discriminator errors, and the two wired resource methods
- * (`uploadKycAttachment` / `startKycReview`) over the mocked transport (D3, zero network).
+ * (`kycAttachments.create` / `startKycReview`) over the mocked transport (D3, zero network).
  *
  * Compile-time narrowing is asserted with `expectTypeOf` (the discriminant must narrow the
  * union member AND its payload). Internal `*Wire` types + `(de)serialize*` are imported from the
@@ -84,7 +84,7 @@ async function _kycTypeNarrowing(): Promise<void> {
 
   const client = new Dinie({ clientId: 'id', clientSecret: 'secret', baseUrl: 'https://x' });
   expectTypeOf(
-    client.customers.uploadKycAttachment('cust_1', upload),
+    client.customers.kycAttachments.create('cust_1', upload),
   ).resolves.toEqualTypeOf<KycAttachmentResponse>();
   expectTypeOf(client.customers.startKycReview('cust_1')).resolves.toEqualTypeOf<void>();
 }
@@ -573,17 +573,17 @@ describe('deserializeKycAttachmentResponse — wraps the discriminated requireme
 
 // ── Resource integration (mocked transport, zero network) ────────────────────────
 
-describe('customers.uploadKycAttachment — POST /kyc-attachments → KycAttachmentResponse', () => {
+describe('customers.kycAttachments.create — POST /kyc-attachments → KycAttachmentResponse', () => {
   it('POSTs the attachment path (idempotent) and deserializes the 201 response', async () => {
     mock.mockToken();
     const endpoint = mock.mockEndpoint({
       method: 'POST',
-      path: '/v3/customers/cust_1/kyc-attachments',
+      path: '/customers/cust_1/kyc-attachments',
       responses: { statusCode: 201, body: ATTACHMENT_RESPONSE_WIRE },
     });
     const customers = makeCustomers();
 
-    const res = await customers.uploadKycAttachment('cust_1', {
+    const res = await customers.kycAttachments.create('cust_1', {
       evidenceType: 'cnh',
       requirementId: 'identity_003XXXXXXXXXXXXXXX',
       attachmentType: 'front',
@@ -591,7 +591,7 @@ describe('customers.uploadKycAttachment — POST /kyc-attachments → KycAttachm
     });
 
     expect(endpoint.lastRequest?.method).toBe('POST');
-    expect(endpoint.lastRequest?.path).toBe('/v3/customers/cust_1/kyc-attachments');
+    expect(endpoint.lastRequest?.path).toBe('/customers/cust_1/kyc-attachments');
     // Idempotent write (D9). NOTE: the request body is NOT asserted — the frozen JSON-only
     // runtime cannot yet encode the multipart FormData (tracked runtime gap, see
     // src/generated/types/kyc/uploads.ts); the per-variant field map is proven by the
@@ -607,7 +607,7 @@ describe('customers.startKycReview — POST /kyc-review → void (202, no body)'
     mock.mockToken();
     const endpoint = mock.mockEndpoint({
       method: 'POST',
-      path: '/v3/customers/cust_1/kyc-review',
+      path: '/customers/cust_1/kyc-review',
       responses: { statusCode: 202, body: '' },
     });
     const customers = makeCustomers();
@@ -616,7 +616,7 @@ describe('customers.startKycReview — POST /kyc-review → void (202, no body)'
 
     expect(result).toBeUndefined();
     expect(endpoint.lastRequest?.method).toBe('POST');
-    expect(endpoint.lastRequest?.path).toBe('/v3/customers/cust_1/kyc-review');
+    expect(endpoint.lastRequest?.path).toBe('/customers/cust_1/kyc-review');
     expect(endpoint.lastRequest?.headers['x-idempotency-key']).toMatch(/^dinie-sdk-retry-/);
   });
 });

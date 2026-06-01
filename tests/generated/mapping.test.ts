@@ -54,13 +54,13 @@ async function _publicSurfaceTypeCheck(): Promise<void> {
   };
 
   expectTypeOf(client.customers.create(createParams, options)).resolves.toEqualTypeOf<Customer>();
-  expectTypeOf(client.customers.get('cust_1', options)).resolves.toEqualTypeOf<Customer>();
+  expectTypeOf(client.customers.retrieve('cust_1', options)).resolves.toEqualTypeOf<Customer>();
   expectTypeOf(client.customers.list(listParams)).toEqualTypeOf<PagePromise<Customer>>();
   expectTypeOf(
     client.customers.update('cust_1', updateParams, options),
   ).resolves.toEqualTypeOf<Customer>();
   expectTypeOf(
-    client.customers.getBankAccount('cust_1', options),
+    client.customers.retrieveBankAccount('cust_1', options),
   ).resolves.toEqualTypeOf<CustomerBankAccount>();
   expectTypeOf(
     client.customers.upsertBankAccount('cust_1', bankAccountParams, options),
@@ -68,7 +68,7 @@ async function _publicSurfaceTypeCheck(): Promise<void> {
   expectTypeOf(
     client.customers.createBiometricsSession('cust_1'),
   ).resolves.toEqualTypeOf<BiometricsSession>();
-  expectTypeOf(client.customers.listCreditOffers('cust_1', { status: 'available' })).toEqualTypeOf<
+  expectTypeOf(client.customers.creditOffers.list('cust_1', { status: 'available' })).toEqualTypeOf<
     PagePromise<CreditOffer>
   >();
   // camelCase getter (D12/R7) — the V0.1 demo's snake_case `rate_limit` is gone.
@@ -180,16 +180,16 @@ describe('Customers — camelCase ↔ snake_case mapping via the generated seria
     expect('kyc' in result).toBe(false);
   });
 
-  it('maps get response to camelCase', async () => {
+  it('maps retrieve response to camelCase', async () => {
     mock.mockToken();
     mock.mockEndpoint({
       method: 'GET',
-      path: /^\/v3\/customers\/cust_42/,
+      path: /^\/customers\/cust_42/,
       responses: { statusCode: 200, body: wireCustomer('cust_42') },
     });
     const customers = makeCustomers();
 
-    const result = await customers.get('cust_42');
+    const result = await customers.retrieve('cust_42');
 
     expect(result.id).toBe('cust_42');
     expect(result.cpf).toBe('123.456.789-00');
@@ -200,7 +200,7 @@ describe('Customers — camelCase ↔ snake_case mapping via the generated seria
     mock.mockToken();
     const endpoint = mock.mockEndpoint({
       method: 'GET',
-      path: /^\/v3\/customers/,
+      path: /^\/customers/,
       responses: { statusCode: 200, body: { object: 'list', data: [], has_more: false } },
     });
     const customers = makeCustomers();
@@ -216,7 +216,7 @@ describe('Customers — camelCase ↔ snake_case mapping via the generated seria
     mock.mockToken();
     const endpoint = mock.mockEndpoint({
       method: 'GET',
-      path: /^\/v3\/customers/,
+      path: /^\/customers/,
       responses: [
         {
           statusCode: 200,

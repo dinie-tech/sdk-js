@@ -38,23 +38,71 @@ function makeClient(sleep: (ms: number) => Promise<void> = async () => {}): Http
 
 const POST_CUSTOMER: InternalRequest = {
   method: 'POST',
-  path: '/v3/customers',
+  path: '/customers',
   body: { tax_id: '12345678000190', name: 'Acme Ltda' },
   idempotent: true,
 };
 
 const GET_CUSTOMER: InternalRequest = {
   method: 'GET',
-  path: '/v3/customers/cus_1',
+  path: '/customers/cus_1',
   idempotent: false,
 };
+
+describe('HttpClient — base URL pathname preservation (openapi /api/v3 fix)', () => {
+  it('prepends the base pathname to BOTH the bare token path and bare resource paths', async () => {
+    // The base URL carries the `/api/v3` version prefix (the openapi `servers[0]`). Resource
+    // AND token paths are bare; the client must resolve them UNDER `/api/v3` — the regression
+    // guard for the latent bug (origin-only `…/v3/…` instead of `…/api/v3/…`). story 014.
+    const token = mock.mockEndpoint({
+      method: 'POST',
+      path: '/api/v3/auth/token',
+      responses: {
+        statusCode: 200,
+        body: { access_token: 'tok-prefixed', token_type: 'Bearer', expires_in: 3600 },
+      },
+    });
+    const resource = mock.mockEndpoint({
+      method: 'GET',
+      path: '/api/v3/customers/cus_1',
+      responses: { statusCode: 200, body: { id: 'cus_1' } },
+    });
+    const client = new HttpClient({
+      clientId: 'client-abc',
+      clientSecret: 'secret-xyz',
+      baseUrl: `${mock.origin}/api/v3`,
+      dispatcher: mock.dispatcher,
+    });
+
+    await client.request<unknown>({ method: 'GET', path: '/customers/cus_1', idempotent: false });
+
+    // OAuth token endpoint resolved under `/api/v3` (preserved base pathname), not bare.
+    expect(token.lastRequest?.path).toBe('/api/v3/auth/token');
+    // Bare resource path resolved under `/api/v3` too.
+    expect(resource.lastRequest?.path).toBe('/api/v3/customers/cus_1');
+  });
+
+  it('leaves paths bare when the base URL is origin-only (no pathname → empty basePath)', async () => {
+    mock.mockToken(); // token endpoint at the bare `/auth/token`
+    const ep = mock.mockEndpoint({
+      method: 'GET',
+      path: '/customers/cus_1',
+      responses: { statusCode: 200, body: { id: 'cus_1' } },
+    });
+
+    // `mock.origin` is origin-only → basePath `''` → the bare path passes through unchanged.
+    await makeClient().request<unknown>(GET_CUSTOMER);
+
+    expect(ep.lastRequest?.path).toBe('/customers/cus_1');
+  });
+});
 
 describe('HttpClient — header assembly', () => {
   it('assembles auth, telemetry, idempotency and content-type on a POST', async () => {
     mock.mockToken({ accessToken: 'tok-1' });
     const ep = mock.mockEndpoint({
       method: 'POST',
-      path: '/v3/customers',
+      path: '/customers',
       responses: { statusCode: 201, body: { id: 'cus_1', object: 'customer' } },
     });
     const client = makeClient();
@@ -82,7 +130,7 @@ describe('HttpClient — header assembly', () => {
     mock.mockToken();
     const ep = mock.mockEndpoint({
       method: 'GET',
-      path: '/v3/customers/cus_1',
+      path: '/customers/cus_1',
       responses: { statusCode: 200, body: { id: 'cus_1' } },
     });
 
@@ -96,7 +144,7 @@ describe('HttpClient — header assembly', () => {
     mock.mockToken();
     const ep = mock.mockEndpoint({
       method: 'POST',
-      path: '/v3/customers',
+      path: '/customers',
       responses: { statusCode: 201, body: { id: 'cus_1' } },
     });
 
@@ -112,7 +160,7 @@ describe('HttpClient — header assembly', () => {
     mock.mockToken();
     const ep = mock.mockEndpoint({
       method: 'GET',
-      path: '/v3/customers/cus_1',
+      path: '/customers/cus_1',
       responses: { statusCode: 200, body: { id: 'cus_1' } },
     });
 
@@ -131,7 +179,7 @@ describe('HttpClient — success parse', () => {
     mock.mockToken();
     mock.mockEndpoint({
       method: 'GET',
-      path: '/v3/customers/cus_1',
+      path: '/customers/cus_1',
       responses: {
         statusCode: 200,
         body: { id: 'cus_1', object: 'customer', name: 'Acme Ltda' },
@@ -147,7 +195,7 @@ describe('HttpClient — success parse', () => {
     mock.mockToken();
     mock.mockEndpoint({
       method: 'GET',
-      path: /^\/v3\/customers/,
+      path: /^\/customers/,
       responses: {
         statusCode: 200,
         body: { object: 'list', data: [{ id: 'cus_1' }, { id: 'cus_2' }], has_more: false },
@@ -156,7 +204,7 @@ describe('HttpClient — success parse', () => {
 
     const page = await makeClient().requestPage<{ id: string }>({
       method: 'GET',
-      path: '/v3/customers',
+      path: '/customers',
       query: { limit: 2 },
       idempotent: false,
     });
@@ -173,7 +221,7 @@ describe('HttpClient — error mapping (semantic 4xx → typed, no retry)', () =
     const sleep = vi.fn(async () => {});
     const ep = mock.mockEndpoint({
       method: 'GET',
-      path: '/v3/customers/cus_x',
+      path: '/customers/cus_x',
       responses: {
         statusCode: 404,
         body: {
@@ -188,7 +236,7 @@ describe('HttpClient — error mapping (semantic 4xx → typed, no retry)', () =
     await expect(
       makeClient(sleep).request<unknown>({
         method: 'GET',
-        path: '/v3/customers/cus_x',
+        path: '/customers/cus_x',
         idempotent: false,
       }),
     ).rejects.toBeInstanceOf(NotFoundError);
@@ -201,7 +249,7 @@ describe('HttpClient — error mapping (semantic 4xx → typed, no retry)', () =
     mock.mockToken();
     mock.mockEndpoint({
       method: 'POST',
-      path: '/v3/customers',
+      path: '/customers',
       responses: { statusCode: 422, body: { status: 422, title: 'invalid' } },
     });
     await expect(makeClient().request<unknown>(POST_CUSTOMER)).rejects.toBeInstanceOf(
@@ -210,13 +258,13 @@ describe('HttpClient — error mapping (semantic 4xx → typed, no retry)', () =
 
     const conflict = mock.mockEndpoint({
       method: 'POST',
-      path: '/v3/charges',
+      path: '/charges',
       responses: { statusCode: 409, body: { status: 409, title: 'conflict' } },
     });
     await expect(
       makeClient().request<unknown>({
         method: 'POST',
-        path: '/v3/charges',
+        path: '/charges',
         body: {},
         idempotent: true,
       }),
@@ -230,7 +278,7 @@ describe('HttpClient — rate-limit capture', () => {
     mock.mockToken();
     mock.mockEndpoint({
       method: 'GET',
-      path: '/v3/customers/cus_1',
+      path: '/customers/cus_1',
       responses: {
         statusCode: 200,
         body: { id: 'cus_1' },
@@ -260,7 +308,7 @@ describe('HttpClient — retry integration', () => {
     const tokens = mock.mockToken({ accessToken: 'tok-1' });
     const ep = mock.mockEndpoint({
       method: 'POST',
-      path: '/v3/customers',
+      path: '/customers',
       responses: [
         { statusCode: 503, headers: { 'retry-after': '2' } },
         { statusCode: 201, body: { id: 'cus_1', object: 'customer' } },
@@ -291,7 +339,7 @@ describe('HttpClient — retry integration', () => {
     mock.mockToken();
     const ep = mock.mockEndpoint({
       method: 'POST',
-      path: '/v3/customers',
+      path: '/customers',
       responses: { statusCode: 503, headers: { 'retry-after': '0' } },
     });
 
@@ -313,7 +361,7 @@ describe('HttpClient — retry integration', () => {
     const reset = Object.assign(new Error('socket hang up'), { code: 'ECONNRESET' });
     const ep = mock.mockEndpoint({
       method: 'POST',
-      path: '/v3/customers',
+      path: '/customers',
       responses: [{ error: reset }, { statusCode: 201, body: { id: 'cus_1' } }],
     });
 
@@ -332,7 +380,7 @@ describe('HttpClient — 401 one-shot re-auth', () => {
     const tokens = mock.mockToken(); // distinct token per refresh
     const ep = mock.mockEndpoint({
       method: 'POST',
-      path: '/v3/customers',
+      path: '/customers',
       responses: [
         {
           statusCode: 401,
@@ -361,7 +409,7 @@ describe('HttpClient — 401 one-shot re-auth', () => {
     const tokens = mock.mockToken();
     const ep = mock.mockEndpoint({
       method: 'GET',
-      path: '/v3/customers/cus_1',
+      path: '/customers/cus_1',
       responses: {
         statusCode: 401,
         body: { type: 'https://docs.dinie.com.br/errors/authentication-error', status: 401 },
@@ -393,7 +441,7 @@ describe('HttpClient — idempotency opt-out (config.idempotency, R4/D9)', () =>
     mock.mockToken();
     const ep = mock.mockEndpoint({
       method: 'POST',
-      path: '/v3/customers',
+      path: '/customers',
       responses: { statusCode: 201, body: { id: 'cus_1' } },
     });
 
@@ -406,7 +454,7 @@ describe('HttpClient — idempotency opt-out (config.idempotency, R4/D9)', () =>
     mock.mockToken();
     const ep = mock.mockEndpoint({
       method: 'POST',
-      path: '/v3/customers',
+      path: '/customers',
       responses: { statusCode: 201, body: { id: 'cus_1' } },
     });
 
@@ -424,7 +472,7 @@ describe('HttpClient — APIPromise dual nature (D15)', () => {
     mock.mockToken();
     mock.mockEndpoint({
       method: 'GET',
-      path: '/v3/customers/cus_1',
+      path: '/customers/cus_1',
       responses: {
         statusCode: 200,
         body: { id: 'cus_1', object: 'customer' },
@@ -445,7 +493,7 @@ describe('HttpClient — APIPromise dual nature (D15)', () => {
     mock.mockToken();
     mock.mockEndpoint({
       method: 'GET',
-      path: '/v3/customers/cus_1',
+      path: '/customers/cus_1',
       responses: {
         statusCode: 200,
         body: { id: 'cus_1' },
@@ -463,7 +511,7 @@ describe('HttpClient — APIPromise dual nature (D15)', () => {
     mock.mockToken();
     mock.mockEndpoint({
       method: 'GET',
-      path: '/v3/customers/cus_1',
+      path: '/customers/cus_1',
       responses: { statusCode: 200, body: { id: 'cus_1', n: 1 } },
     });
 

@@ -170,7 +170,7 @@ export interface CustomerListParams {
 }
 
 /**
- * Query params for `customers.listCreditOffers`. Mirrors the openapi query of
+ * Query params for `customers.creditOffers.list`. Mirrors the openapi query of
  * `GET /customers/{id}/credit-offers`: pagination (`limit`/`starting_after`) plus the optional
  * `status` filter. The architecture §3.1 summary table lists only `{limit?, startingAfter?}`,
  * but the contract (SoT — D2) defines `status` too, so the deterministic generator output

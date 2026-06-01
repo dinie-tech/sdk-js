@@ -5,19 +5,19 @@
  * camelCase ↔ snake_case bridge to the per-type generated serializers, methods alphabetical.
  *
  * ── The 3 methods (alphabetical — minimal diff for the V0.4 generator) ──
- *   createSimulation   POST   /v3/credit-offers/{id}/simulations   → Simulation (201, idempotent)
- *   get                GET    /v3/credit-offers/{id}               → CreditOffer
- *   list               GET    /v3/credit-offers                    → PagePromise<CreditOffer>
+ *   createSimulation   POST   /credit-offers/{id}/simulations   → Simulation (201, idempotent)
+ *   list               GET    /credit-offers                    → PagePromise<CreditOffer>
+ *   retrieve           GET    /credit-offers/{id}               → CreditOffer
  *
  * ── NO `create` (R10) ──
  * There is NO `POST /credit-offers`: offers are minted by the Core (the `credit_offer.available`
  * webhook), never POSTed by the partner. The V0.2 version-spec demo's `creditOffers.create` is
  * illustrative and does NOT belong on the frozen surface — the offer arrives via webhook/listing.
  *
- * ── Method naming (§7.1 — strip the resource noun) ──
- *   listCreditOffers → list   (strip `CreditOffers`)
- *   getCreditOffer   → get    (strip `CreditOffer`)
- *   createSimulation → createSimulation  (no resource noun to strip)
+ * ── Naming convention (principles.md §1 — strip the resource noun, canonical CRUD verbs) ──
+ *   listCreditOffers → list      (strip `CreditOffers`)
+ *   getCreditOffer   → retrieve  (strip `CreditOffer`, `get`→`retrieve`)
+ *   createSimulation → createSimulation  (no resource noun to strip; non-CRUD verb kept)
  *
  * ── Sub-path (D3): the parent id is the 1st positional arg ──
  * `POST /credit-offers/{id}/simulations` becomes `createSimulation(id, params, opts?)` — the
@@ -46,7 +46,7 @@ import {
 } from '../types/simulation.js';
 
 /** Path of the credit-offers collection. */
-const CREDIT_OFFERS_PATH = '/v3/credit-offers';
+const CREDIT_OFFERS_PATH = '/credit-offers';
 
 /** Path of a single credit offer (sub-paths hang off this). */
 function creditOfferPath(id: string): string {
@@ -66,7 +66,7 @@ export class CreditOffers {
   }
 
   /**
-   * Simulate a loan against an offer. `POST /v3/credit-offers/{id}/simulations` (idempotent — the
+   * Simulate a loan against an offer. `POST /credit-offers/{id}/simulations` (idempotent — the
    * runtime mints a stable `X-Idempotency-Key` reused across retries). The camelCase request is
    * serialized to the wire body and the wire response (201) deserialized to a {@link Simulation}
    * (principal, IOF, CET, installment value — feeds the §12 Customer→Offer→Loan flow).
@@ -84,17 +84,6 @@ export class CreditOffers {
       ...(options !== undefined ? { options } : {}),
     });
     return deserializeSimulation(wire);
-  }
-
-  /** Retrieve a credit offer by id. `GET /v3/credit-offers/{id}`. */
-  async get(id: string, options?: RequestOptions): Promise<CreditOffer> {
-    const wire = await this.#http.request<CreditOfferWire>({
-      method: 'GET',
-      path: creditOfferPath(id),
-      idempotent: false,
-      ...(options !== undefined ? { options } : {}),
-    });
-    return deserializeCreditOffer(wire);
   }
 
   /**
@@ -124,6 +113,17 @@ export class CreditOffers {
         ._thenUnwrap(toCreditOfferPage);
     };
     return new PagePromise<CreditOffer>(fetchPage);
+  }
+
+  /** Retrieve a credit offer by id. `GET /credit-offers/{id}`. */
+  async retrieve(id: string, options?: RequestOptions): Promise<CreditOffer> {
+    const wire = await this.#http.request<CreditOfferWire>({
+      method: 'GET',
+      path: creditOfferPath(id),
+      idempotent: false,
+      ...(options !== undefined ? { options } : {}),
+    });
+    return deserializeCreditOffer(wire);
   }
 }
 

@@ -288,7 +288,7 @@ describe('APIError.fromResponse — body preservation', () => {
       status: 422,
       title: 'Validation failed',
       detail: 'The taxId field is invalid.',
-      instance: '/v3/customers',
+      instance: '/customers',
       violations,
     });
     const err = (await APIError.fromResponse(
@@ -298,7 +298,7 @@ describe('APIError.fromResponse — body preservation', () => {
     expect(err).toBeInstanceOf(ValidationError);
     expect(err.title).toBe('Validation failed');
     expect(err.detail).toBe('The taxId field is invalid.');
-    expect(err.instance).toBe('/v3/customers');
+    expect(err.instance).toBe('/customers');
 
     const body = err.body as ProblemDetails;
     expect(body.title).toBe('Validation failed');

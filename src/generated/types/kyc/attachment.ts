@@ -11,7 +11,7 @@
  * ── runtime ↔ generated boundary ──
  * Lives in `generated/`. Imports only the sibling requirements module. The model type is public
  * surface (via `./index.ts` → the generated barrel); the `*Wire` type + `deserialize*` are
- * internal, consumed by the customers resource (`uploadKycAttachment`) and conformance (008).
+ * internal, consumed by the customers resource (`kycAttachments.create`) and conformance (008).
  */
 
 import {

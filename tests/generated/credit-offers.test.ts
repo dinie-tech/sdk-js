@@ -73,7 +73,7 @@ describe('creditOffers.createSimulation — POST sub-path, idempotent, camel↔s
     mock.mockToken();
     const endpoint = mock.mockEndpoint({
       method: 'POST',
-      path: '/v3/credit-offers/co_1/simulations',
+      path: '/credit-offers/co_1/simulations',
       responses: { statusCode: 201, body: wireSimulation() },
     });
     const client = makeClient();
@@ -84,7 +84,7 @@ describe('creditOffers.createSimulation — POST sub-path, idempotent, camel↔s
     });
 
     expect(endpoint.lastRequest?.method).toBe('POST');
-    expect(endpoint.lastRequest?.path).toBe('/v3/credit-offers/co_1/simulations');
+    expect(endpoint.lastRequest?.path).toBe('/credit-offers/co_1/simulations');
     // POST write → auto X-Idempotency-Key (R4/D9).
     expect(endpoint.lastRequest?.headers['x-idempotency-key']).toMatch(/^dinie-sdk-retry-/);
     // camelCase params → snake_case wire body (via serializeCreateSimulationRequest).
@@ -114,20 +114,20 @@ describe('creditOffers.createSimulation — POST sub-path, idempotent, camel↔s
   });
 });
 
-describe('creditOffers.get — round-trips a credit offer by id', () => {
+describe('creditOffers.retrieve — round-trips a credit offer by id', () => {
   it('GETs the resource path and maps the wire response to a camelCase CreditOffer', async () => {
     mock.mockToken();
     const endpoint = mock.mockEndpoint({
       method: 'GET',
-      path: '/v3/credit-offers/co_42',
+      path: '/credit-offers/co_42',
       responses: { statusCode: 200, body: wireCreditOffer('co_42', { external_id: 'ref-9' }) },
     });
     const client = makeClient();
 
-    const offer = await client.creditOffers.get('co_42');
+    const offer = await client.creditOffers.retrieve('co_42');
 
     expect(endpoint.lastRequest?.method).toBe('GET');
-    expect(endpoint.lastRequest?.path).toBe('/v3/credit-offers/co_42');
+    expect(endpoint.lastRequest?.path).toBe('/credit-offers/co_42');
     expect(offer.id).toBe('co_42');
     expect(offer.customerId).toBe('cust_1');
     expect(offer.approvedAmount).toBe(50000);
@@ -140,7 +140,7 @@ describe('creditOffers.get — round-trips a credit offer by id', () => {
     mock.mockToken();
     mock.mockEndpoint({
       method: 'GET',
-      path: '/v3/credit-offers/co_range',
+      path: '/credit-offers/co_range',
       responses: {
         statusCode: 200,
         // A range offer omits `installments` and carries min/max instead (the contract's
@@ -154,7 +154,7 @@ describe('creditOffers.get — round-trips a credit offer by id', () => {
     });
     const client = makeClient();
 
-    const offer = await client.creditOffers.get('co_range');
+    const offer = await client.creditOffers.retrieve('co_range');
 
     // The optional `installments` is omitted (not present), min/max are mapped.
     expect(offer.installments).toBeUndefined();
@@ -169,7 +169,7 @@ describe('creditOffers.list — auto-pagination via for await', () => {
     mock.mockToken();
     const endpoint = mock.mockEndpoint({
       method: 'GET',
-      path: /^\/v3\/credit-offers(\?|$)/,
+      path: /^\/credit-offers(\?|$)/,
       responses: [
         {
           statusCode: 200,
@@ -200,7 +200,7 @@ describe('creditOffers.list — auto-pagination via for await', () => {
     mock.mockToken();
     const endpoint = mock.mockEndpoint({
       method: 'GET',
-      path: /^\/v3\/credit-offers(\?|$)/,
+      path: /^\/credit-offers(\?|$)/,
       responses: { statusCode: 200, body: { data: [], has_more: false } },
     });
     const client = makeClient();

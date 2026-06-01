@@ -46,7 +46,7 @@
  * ── `rotateSecret` request body (contract enrichment beyond the §3.1 summary) ──
  * The architecture §3.1 lists `rotateSecret(id, opts?)` with no body, but the contract (SoT —
  * D2) defines an OPTIONAL `{ expire_current_in?: integer }` request body (seconds the old secret
- * stays valid; default 3600, max 86400). Mirroring how `listCreditOffers` surfaced the contract's
+ * stays valid; default 3600, max 86400). Mirroring how `creditOffers.list` surfaced the contract's
  * `status` filter beyond the summary table, the deterministic output includes it as
  * {@link RotateWebhookSecretParams}. Omit it to take the server default.
  *

@@ -5,7 +5,7 @@
  * to the per-type generated deserializer.
  *
  * ── The 1 method ──
- *   list   GET   /v3/banks   → Promise<Bank[]>   (FLAT — NOT paginated; see below)
+ *   list   GET   /banks   → Promise<Bank[]>   (FLAT — NOT paginated; see below)
  *
  * ── `/banks` does NOT paginate — the story's key open question, resolved (§7.5) ──
  * Read against the contract (SoT — D2): the `GET /banks` `200` response schema is
@@ -36,7 +36,7 @@ import type { HttpClient, RequestOptions } from '../../runtime/http.js';
 import { deserializeBank, type Bank, type BankWire } from '../types/bank.js';
 
 /** Path of the banks collection. */
-const BANKS_PATH = '/v3/banks';
+const BANKS_PATH = '/banks';
 
 /** Wire shape of the `GET /banks` response: a bare `{ data }` envelope with NO `has_more`. */
 interface BankListWire {
@@ -55,7 +55,7 @@ export class Banks {
   }
 
   /**
-   * List the banks available for customer bank-account submission. `GET /v3/banks`. The response
+   * List the banks available for customer bank-account submission. `GET /banks`. The response
    * is a flat `{ data: Bank[] }` envelope with NO `has_more` (§7.5), so this returns a plain
    * `Promise<Bank[]>` — the full directory in one call, NOT a paginated stream. Each entry is
    * deserialized to a camelCase {@link Bank}.

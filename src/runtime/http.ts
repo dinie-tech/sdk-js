@@ -116,7 +116,7 @@ export type QueryParams = Record<string, string | number | boolean | undefined |
  */
 export interface InternalRequest {
   method: Dispatcher.HttpMethod;
-  /** Path relative to the origin, e.g. `/v3/customers`. */
+  /** Path relative to the origin, e.g. `/customers`. */
   path: string;
   /** Query params appended to the path (cursor pagination, list filters). */
   query?: QueryParams;
@@ -149,8 +149,12 @@ export interface HttpClientInternals {
   sleep?: (ms: number) => Promise<void>;
 }
 
-/** Default production API base URL (overridable via config/env). */
-export const DEFAULT_BASE_URL = 'https://api.dinie.com.br';
+/**
+ * Default production API base URL — carries the `/api/v3` version prefix (the openapi
+ * `servers[0]`). Resource paths are bare (`/customers`), so the version lives here, in the base.
+ * Overridable via config/env (sandbox: `https://sandbox.api.dinie.com.br/api/v3`).
+ */
+export const DEFAULT_BASE_URL = 'https://api.dinie.com.br/api/v3';
 /** Default per-request timeout, in ms. */
 const DEFAULT_TIMEOUT_MS = 30_000;
 /** Default retry budget after the first attempt. */
@@ -173,6 +177,12 @@ const USER_AGENT = `Dinie-SDK-JS/${SDK_VERSION} (api-version=${API_VERSION}; nod
 export class HttpClient {
   /** API origin (scheme + host), derived from `baseUrl`; handed to the dispatcher. */
   readonly #origin: string;
+  /**
+   * Base pathname carried by `baseUrl` (e.g. `/api/v3`), prepended to every (bare) request path.
+   * `new URL(baseUrl).origin` drops it, so it is captured separately and re-prepended here —
+   * this is what makes `baseUrl='…/api/v3'` + path=`/customers` resolve to `…/api/v3/customers`.
+   */
+  readonly #basePath: string;
   readonly #dispatcher: Dispatcher;
   readonly #tokenManager: TokenManager;
   readonly #logger: RuntimeLogger;
@@ -185,7 +195,11 @@ export class HttpClient {
 
   constructor(config: DinieConfig, internals: HttpClientInternals = {}) {
     const baseUrl = config.baseUrl ?? DEFAULT_BASE_URL;
-    this.#origin = new URL(baseUrl).origin;
+    const parsedBase = new URL(baseUrl);
+    this.#origin = parsedBase.origin;
+    // Keep the base pathname (e.g. `/api/v3`) the origin drops; a trailing slash is trimmed so
+    // `basePath + '/customers'` never doubles the slash. An origin-only base yields `''`.
+    this.#basePath = parsedBase.pathname.replace(/\/+$/, '');
     this.#timeout = config.timeout ?? DEFAULT_TIMEOUT_MS;
     this.#maxRetries = config.maxRetries ?? DEFAULT_MAX_RETRIES;
     this.#idempotency = config.idempotency ?? true;
@@ -254,7 +268,8 @@ export class HttpClient {
     const maxRetries = req.options?.maxRetries ?? this.#maxRetries;
     const timeout = req.options?.timeout ?? this.#timeout;
     const requestLogID = newRequestLogID();
-    const path = buildPath(req.path, req.query);
+    // Prepend the base pathname (e.g. `/api/v3`) to the bare resource path, then append query.
+    const path = `${this.#basePath}${buildPath(req.path, req.query)}`;
     const url = `${this.#origin}${path}`;
     const serialized = serializeBody(req.body);
 

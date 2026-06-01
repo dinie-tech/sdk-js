@@ -44,16 +44,20 @@ export class Dinie {
   /** The credentials resource — create/list/revoke API keys (create returns the one-time secret). */
   readonly credentials: Credentials;
 
-  /** The credit-offers resource — list/get offers + createSimulation (no create — R10). */
+  /** The credit-offers resource — list/retrieve offers + createSimulation (no create — R10). */
   readonly creditOffers: CreditOffers;
 
-  /** The customers resource — the full non-KYC surface (create/get/list/update + sub-paths). */
+  /**
+   * The customers resource — the full surface: create/retrieve/list/update + singleton sub-paths
+   * (retrieveBankAccount/upsertBankAccount/createBiometricsSession/startKycReview) + the nested
+   * collections `customers.creditOffers.list` and `customers.kycAttachments.create`.
+   */
   readonly customers: Customers;
 
-  /** The loans resource — create/get loans + listTransactions. */
+  /** The loans resource — create/retrieve loans + the nested collection `loans.transactions.list`. */
   readonly loans: Loans;
 
-  /** The webhook-endpoints resource — create/list/get/update/delete/rotateSecret (REST management). */
+  /** The webhook-endpoints resource — create/list/retrieve/update/delete/rotateSecret (REST management). */
   readonly webhookEndpoints: WebhookEndpoints;
 
   readonly #http: HttpClient;

@@ -1,11 +1,11 @@
 /**
- * `Loans` resource surface tests (story 005) — exercises `create` / `get` / `listTransactions`
+ * `Loans` resource surface tests (story 005) — exercises `create` / `retrieve` / `transactions.list`
  * end to end over a mocked `undici` transport (D3), ZERO network (`MockAgent` +
  * `disableNetConnect`, owned by `useMockUndici`). Mirrors the customers/credit-offers resource
  * tests: one focused case per method asserting path/method, the camelCase ↔ snake_case bridge
  * (via the generated serializers — story 002), idempotency on the write, the nullable-but-
  * required fields (`principalAmount`/`signingUrl`/… carried as `T | null`), and cursor
- * pagination on `listTransactions`. Imports ONLY the curated barrel (`../../src/index.js`).
+ * pagination on `transactions.list`. Imports ONLY the curated barrel (`../../src/index.js`).
  */
 
 import { Dinie } from '../../src/index.js';
@@ -83,12 +83,12 @@ function wireTransaction(id: string, extra: Record<string, unknown> = {}): Recor
   };
 }
 
-describe('loans.create — POST /v3/loans, idempotent, camel↔snake (201)', () => {
+describe('loans.create — POST /loans, idempotent, camel↔snake (201)', () => {
   it('serializes all five fields, attaches an Idempotency-Key, and maps the Loan response', async () => {
     mock.mockToken();
     const endpoint = mock.mockEndpoint({
       method: 'POST',
-      path: '/v3/loans',
+      path: '/loans',
       responses: { statusCode: 201, body: wireLoan('ln_1') },
     });
     const client = makeClient();
@@ -96,7 +96,7 @@ describe('loans.create — POST /v3/loans, idempotent, camel↔snake (201)', () 
     const loan = await client.loans.create(CREATE_PARAMS);
 
     expect(endpoint.lastRequest?.method).toBe('POST');
-    expect(endpoint.lastRequest?.path).toBe('/v3/loans');
+    expect(endpoint.lastRequest?.path).toBe('/loans');
     // POST write → auto X-Idempotency-Key (R4/D9).
     expect(endpoint.lastRequest?.headers['x-idempotency-key']).toMatch(/^dinie-sdk-retry-/);
     // camelCase params → snake_case wire body (via serializeCreateLoanRequest).
@@ -119,12 +119,12 @@ describe('loans.create — POST /v3/loans, idempotent, camel↔snake (201)', () 
   });
 });
 
-describe('loans.get — round-trips a loan, carrying nullable-but-required fields as null', () => {
+describe('loans.retrieve — round-trips a loan, carrying nullable-but-required fields as null', () => {
   it('GETs the path and maps the wire response, keeping the null fields present (R-OPTIONAL)', async () => {
     mock.mockToken();
     const endpoint = mock.mockEndpoint({
       method: 'GET',
-      path: '/v3/loans/ln_7',
+      path: '/loans/ln_7',
       responses: {
         statusCode: 200,
         // A freshly-created loan: principal/iof not yet calculated, contract not yet generated.
@@ -139,10 +139,10 @@ describe('loans.get — round-trips a loan, carrying nullable-but-required field
     });
     const client = makeClient();
 
-    const loan = await client.loans.get('ln_7');
+    const loan = await client.loans.retrieve('ln_7');
 
     expect(endpoint.lastRequest?.method).toBe('GET');
-    expect(endpoint.lastRequest?.path).toBe('/v3/loans/ln_7');
+    expect(endpoint.lastRequest?.path).toBe('/loans/ln_7');
     expect(loan.id).toBe('ln_7');
     // Required-but-nullable: ALWAYS present, carried as `null` (not omitted).
     expect(loan.principalAmount).toBeNull();
@@ -157,12 +157,12 @@ describe('loans.get — round-trips a loan, carrying nullable-but-required field
   });
 });
 
-describe('loans.listTransactions — auto-pagination over a loan sub-path', () => {
+describe('loans.transactions.list — auto-pagination over a loan sub-path', () => {
   it('iterates transactions across pages, threads starting_after, maps snake→camel', async () => {
     mock.mockToken();
     const endpoint = mock.mockEndpoint({
       method: 'GET',
-      path: /^\/v3\/loans\/ln_1\/transactions(\?|$)/,
+      path: /^\/loans\/ln_1\/transactions(\?|$)/,
       responses: [
         {
           statusCode: 200,
@@ -177,7 +177,7 @@ describe('loans.listTransactions — auto-pagination over a loan sub-path', () =
     const client = makeClient();
 
     const collected: Transaction[] = [];
-    for await (const tx of client.loans.listTransactions('ln_1', { limit: 2 })) {
+    for await (const tx of client.loans.transactions.list('ln_1', { limit: 2 })) {
       collected.push(tx);
     }
 
@@ -196,7 +196,7 @@ describe('loans.listTransactions — auto-pagination over a loan sub-path', () =
     mock.mockToken();
     mock.mockEndpoint({
       method: 'GET',
-      path: /^\/v3\/loans\/ln_1\/transactions(\?|$)/,
+      path: /^\/loans\/ln_1\/transactions(\?|$)/,
       responses: {
         statusCode: 200,
         body: {
@@ -215,7 +215,7 @@ describe('loans.listTransactions — auto-pagination over a loan sub-path', () =
     const client = makeClient();
 
     const collected: Transaction[] = [];
-    for await (const tx of client.loans.listTransactions('ln_1')) {
+    for await (const tx of client.loans.transactions.list('ln_1')) {
       collected.push(tx);
     }
 

@@ -12,17 +12,17 @@
  * `WebhookEvent` union.
  *
  * ── The 6 methods (alphabetical — minimal diff for the V0.4 generator) ──
- *   create        POST     /v3/webhooks/endpoints                  → WebhookEndpointWithSecret (201, idempotent)
- *   delete        DELETE   /v3/webhooks/endpoints/{id}             → void (204)
- *   get           GET      /v3/webhooks/endpoints/{id}             → WebhookEndpoint
- *   list          GET      /v3/webhooks/endpoints                  → PagePromise<WebhookEndpoint>
- *   rotateSecret  POST     /v3/webhooks/endpoints/{id}/rotate-secret → WebhookSecretRotation (idempotent)
- *   update        PATCH    /v3/webhooks/endpoints/{id}             → WebhookEndpoint (idempotent)
+ *   create        POST     /webhooks/endpoints                  → WebhookEndpointWithSecret (201, idempotent)
+ *   delete        DELETE   /webhooks/endpoints/{id}             → void (204)
+ *   list          GET      /webhooks/endpoints                  → PagePromise<WebhookEndpoint>
+ *   retrieve      GET      /webhooks/endpoints/{id}             → WebhookEndpoint
+ *   rotateSecret  POST     /webhooks/endpoints/{id}/rotate-secret → WebhookSecretRotation (idempotent)
+ *   update        PATCH    /webhooks/endpoints/{id}             → WebhookEndpoint (idempotent)
  *
- * ── Method naming (§7.1 — strip the resource noun) ──
- *   createWebhookEndpoint → create   getWebhookEndpoint → get   listWebhookEndpoints → list
+ * ── Naming convention (principles.md §1 — strip the resource noun, canonical CRUD verbs) ──
+ *   createWebhookEndpoint → create   getWebhookEndpoint → retrieve   listWebhookEndpoints → list
  *   updateWebhookEndpoint → update   deleteWebhookEndpoint → delete
- *   rotateWebhookSecret   → rotateSecret   (strip `Webhook`)
+ *   rotateWebhookSecret   → rotateSecret   (strip `Webhook`; non-CRUD verb kept)
  *
  * ── Sub-path (D3): the parent id is the 1st positional arg ──
  * `POST /webhooks/endpoints/{id}/rotate-secret` becomes `rotateSecret(id, params?, opts?)` — the
@@ -68,7 +68,7 @@ import {
 } from '../types/webhook-endpoint.js';
 
 /** Path of the webhook-endpoints collection. */
-const WEBHOOK_ENDPOINTS_PATH = '/v3/webhooks/endpoints';
+const WEBHOOK_ENDPOINTS_PATH = '/webhooks/endpoints';
 
 /** Path of a single webhook endpoint (sub-paths hang off this). */
 function webhookEndpointPath(id: string): string {
@@ -88,7 +88,7 @@ export class WebhookEndpoints {
   }
 
   /**
-   * Create a webhook endpoint. `POST /v3/webhooks/endpoints` (idempotent). The wire `201`
+   * Create a webhook endpoint. `POST /webhooks/endpoints` (idempotent). The wire `201`
    * response is the ONLY place the signing `secret` appears, so the result is a
    * {@link WebhookEndpointWithSecret} (store the secret securely — it cannot be retrieved again).
    */
@@ -107,7 +107,7 @@ export class WebhookEndpoints {
   }
 
   /**
-   * Delete a webhook endpoint and stop all deliveries. `DELETE /v3/webhooks/endpoints/{id}`.
+   * Delete a webhook endpoint and stop all deliveries. `DELETE /webhooks/endpoints/{id}`.
    * Returns `void` (the contract replies `204` with an empty body).
    */
   async delete(id: string, options?: RequestOptions): Promise<void> {
@@ -117,17 +117,6 @@ export class WebhookEndpoints {
       idempotent: false,
       ...(options !== undefined ? { options } : {}),
     });
-  }
-
-  /** Retrieve a webhook endpoint by id. `GET /v3/webhooks/endpoints/{id}`. */
-  async get(id: string, options?: RequestOptions): Promise<WebhookEndpoint> {
-    const wire = await this.#http.request<WebhookEndpointWire>({
-      method: 'GET',
-      path: webhookEndpointPath(id),
-      idempotent: false,
-      ...(options !== undefined ? { options } : {}),
-    });
-    return deserializeWebhookEndpoint(wire);
   }
 
   /**
@@ -159,8 +148,19 @@ export class WebhookEndpoints {
     return new PagePromise<WebhookEndpoint>(fetchPage);
   }
 
+  /** Retrieve a webhook endpoint by id. `GET /webhooks/endpoints/{id}`. */
+  async retrieve(id: string, options?: RequestOptions): Promise<WebhookEndpoint> {
+    const wire = await this.#http.request<WebhookEndpointWire>({
+      method: 'GET',
+      path: webhookEndpointPath(id),
+      idempotent: false,
+      ...(options !== undefined ? { options } : {}),
+    });
+    return deserializeWebhookEndpoint(wire);
+  }
+
   /**
-   * Rotate the HMAC signing secret. `POST /v3/webhooks/endpoints/{id}/rotate-secret` (idempotent).
+   * Rotate the HMAC signing secret. `POST /webhooks/endpoints/{id}/rotate-secret` (idempotent).
    * The previous secret stays valid for a grace period — `params.expireCurrentIn` (seconds, see
    * {@link RotateWebhookSecretParams}) overrides the server default; omit `params` to take the
    * default. The result is a {@link WebhookSecretRotation} carrying the new secret (shown once)
@@ -183,7 +183,7 @@ export class WebhookEndpoints {
 
   /**
    * Update a webhook endpoint's URL, events, description, or status. `PATCH
-   * /v3/webhooks/endpoints/{id}` (idempotent). Only the keys the caller set are sent (PATCH
+   * /webhooks/endpoints/{id}` (idempotent). Only the keys the caller set are sent (PATCH
    * semantics); the wire response is the full updated {@link WebhookEndpoint}.
    */
   async update(

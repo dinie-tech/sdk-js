@@ -18,7 +18,7 @@
  * attach rate-limit / `retry-after` headers, or simulate a transport failure. Each
  * reply captures the request (headers/body) so tests can assert header assembly,
  * Idempotency-Key stability, and the retry counter. `mockCustomer()` is a thin
- * `POST /v3/customers` convenience over it for the resource/E2E stories (009/010).
+ * `POST /customers` convenience over it for the resource/E2E stories (009/010).
  *
  * Add further builders as methods on `MockUndici`, mirroring `mockToken()`/
  * `mockEndpoint()`: register on `this.pool`, capture requests via the reply callback,
@@ -34,7 +34,7 @@ import { MockAgent } from 'undici';
 export const DEFAULT_ORIGIN = 'https://api.dinie.test';
 
 /** Path of the OAuth2 token endpoint (kept in sync with `token-manager.ts`). */
-const TOKEN_PATH = '/v3/auth/token';
+const TOKEN_PATH = '/auth/token';
 
 /** A request as captured by an interceptor's reply callback (for assertions). */
 export interface CapturedRequest {
@@ -78,7 +78,7 @@ export interface MockTokenOptions {
 
 /** Handle returned by {@link MockUndici.mockToken} for asserting on token traffic. */
 export interface TokenMock {
-  /** Number of `POST /v3/auth/token` calls the SDK has made so far. */
+  /** Number of `POST /auth/token` calls the SDK has made so far. */
   readonly callCount: number;
   /** Every captured token request, in order. */
   readonly requests: readonly CapturedRequest[];
@@ -104,7 +104,7 @@ export interface MockResponseSpec {
 export interface MockEndpointOptions {
   /** HTTP method to intercept. Default `'GET'`. */
   method?: string;
-  /** Path (or matcher) to intercept, e.g. `/v3/customers` or `/v3/customers/cus_1`. */
+  /** Path (or matcher) to intercept, e.g. `/customers` or `/customers/cus_1`. */
   path: string | RegExp;
   /**
    * Reply(ies) for the endpoint. A single spec is persistent (serves every call); an
@@ -124,7 +124,7 @@ export interface EndpointMock {
   readonly lastRequest: CapturedRequest | undefined;
 }
 
-/** Options for {@link MockUndici.mockCustomer} — a thin `POST /v3/customers` convenience. */
+/** Options for {@link MockUndici.mockCustomer} — a thin `POST /customers` convenience. */
 export interface MockCustomerOptions {
   /** Status to reply with. Default `201`. */
   statusCode?: number;
@@ -134,7 +134,7 @@ export interface MockCustomerOptions {
   headers?: Record<string, string>;
 }
 
-/** Options for {@link MockUndici.mockCustomerPage} — a sequenced `GET /v3/customers` list. */
+/** Options for {@link MockUndici.mockCustomerPage} — a sequenced `GET /customers` list. */
 export interface MockCustomerPageOptions {
   /**
    * The pages to serve, in order — each an array of (snake_case wire) customer records.
@@ -195,7 +195,7 @@ export class MockUndici {
   }
 
   /**
-   * Intercept `POST /v3/auth/token`, replying with an OAuth2 token response. The
+   * Intercept `POST /auth/token`, replying with an OAuth2 token response. The
    * interceptor is persistent (serves every call) and records each request so tests
    * can assert the POST count and request shape (Basic auth, form body).
    */
@@ -307,7 +307,7 @@ export class MockUndici {
   }
 
   /**
-   * Convenience over {@link mockEndpoint} for `POST /v3/customers`: replies `201` with
+   * Convenience over {@link mockEndpoint} for `POST /customers`: replies `201` with
    * a minimal `cust_…` record. Used by the resource/E2E stories (009/010).
    */
   mockCustomer(options: MockCustomerOptions = {}): EndpointMock {
@@ -326,7 +326,7 @@ export class MockUndici {
     };
     return this.mockEndpoint({
       method: 'POST',
-      path: '/v3/customers',
+      path: '/customers',
       responses: {
         statusCode: options.statusCode ?? 201,
         body: customer,
@@ -336,7 +336,7 @@ export class MockUndici {
   }
 
   /**
-   * Convenience over {@link mockEndpoint} for `GET /v3/customers`: serve a SEQUENCE of
+   * Convenience over {@link mockEndpoint} for `GET /customers`: serve a SEQUENCE of
    * list pages as `ListEnvelope<Customer>` bodies, deriving `has_more` from the page's
    * position (every page but the last is `has_more: true`). Used by the E2E story (010)
    * to exercise multi-page `for await` and the `starting_after` cursor in one builder.
@@ -350,7 +350,7 @@ export class MockUndici {
       body: { object: 'list', data: [...data], has_more: index < lastIndex },
       ...(options.headers !== undefined ? { headers: options.headers } : {}),
     }));
-    return this.mockEndpoint({ method: 'GET', path: /^\/v3\/customers(\?|$)/, responses });
+    return this.mockEndpoint({ method: 'GET', path: /^\/customers(\?|$)/, responses });
   }
 }
 

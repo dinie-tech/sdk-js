@@ -164,7 +164,7 @@ export interface LoanWire {
   updated_at: number;
 }
 
-/** Query params for `loans.listTransactions` (the cursor is normally driven by the paginator). */
+/** Query params for `loans.transactions.list` (the cursor is normally driven by the paginator). */
 export interface LoanTransactionsListParams {
   /** Page size, 1..100. */
   limit?: number;
