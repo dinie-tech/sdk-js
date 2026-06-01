@@ -1,6 +1,6 @@
 /**
- * Standard Webhooks v1 signing fixtures — born here (story 005), reused by the
- * generated-surface event test (story 010).
+ * Standard Webhooks v1 signing fixtures — born in story 005, expanded in story 007 to cover
+ * all 15 event types as SNAKE_CASE WIRE bodies (the bytes Dinie actually sends).
  *
  * Mirrors the signing side of the contract `Webhooks.extract` verifies:
  *
@@ -8,11 +8,15 @@
  *   signature     = base64(HMAC-SHA256(decodeSecret(secret), signedPayload))
  *   header        = "v1,<sig>"   // space-join more tokens for rotation / multi-sig
  *
- * The signing helpers are deliberately INDEPENDENT of the runtime implementation
- * (their own HMAC) so the tests prove the contract end-to-end, not a tautology.
+ * The signing helpers are deliberately INDEPENDENT of the runtime implementation (their own
+ * HMAC) so the tests prove the contract end-to-end, not a tautology. The bodies are snake_case
+ * (V0.1 used camelCase — story 007 makes `extract` deserialize per type, so the wire is now
+ * honest snake_case and the SDK maps it to camelCase).
  */
 
 import { createHmac } from 'node:crypto';
+
+import type { WebhookEventType } from '../../src/index.js';
 
 /** Default test secret (`whsec_` + base64 — exercises secret decoding). */
 export const TEST_WEBHOOK_SECRET = `whsec_${Buffer.from('dinie-test-webhook-secret').toString('base64')}`;
@@ -32,7 +36,7 @@ export interface SignWebhookOptions {
   id?: string;
   /** `webhook-timestamp`, in Unix seconds. Default: now. */
   timestampSeconds?: number;
-  /** Raw body string. Default: a `customer.created`-shaped event. */
+  /** Raw body string. Default: a `customer.created`-shaped wire event. */
   body?: string;
   /** Signing secret. Default {@link TEST_WEBHOOK_SECRET}. */
   secret?: string;
@@ -63,32 +67,190 @@ export function computeSignature(
   return createHmac('sha256', decodeSecret(secret)).update(signedPayload).digest('base64');
 }
 
-/**
- * A default `customer.created`-shaped event body (camelCase, structural). The `data` is the
- * reconciled `Customer` (story 002 — `cpf`/`cnpj`, epoch `number`, no `taxId`/`object`).
- * The V0.1 `extract` still blind-casts (story 007 adds per-type deserialization), so these
- * keys are camelCase to match what `extract` returns today.
- */
-export function defaultEventBody(overrides: Record<string, unknown> = {}): string {
-  return JSON.stringify({
+// ── Wire bodies (snake_case — what the SDK deserializes per type, story 007) ──────
+
+/** One valid `KycRequirement` wire entry (`identity`), mirroring the openapi example. */
+const IDENTITY_REQUIREMENT_WIRE = {
+  requirement_id: 'identity_003XXXXXXXXXXXXXXX',
+  requirement_type: 'identity',
+  label: 'Documento de identidade',
+  mandatory: true,
+  subject: { id: '003XXXXXXXXXXXXXXX', name: 'Joao Silva', subject_type: 'applicant' },
+};
+
+/** Build the shared snake_case envelope for an event `type`. */
+function wireEnvelope(type: WebhookEventType): Record<string, unknown> {
+  return {
     id: 'evt_test_123',
-    type: 'customer.created',
-    createdAt: '2026-05-27T12:00:00.000Z',
+    type,
+    api_version: '2026-03-01',
+    created_at: 1775253600,
+    delivery_id: 'dlv_test_123',
+    timestamp: 1775253600,
+  };
+}
+
+/**
+ * A valid snake_case WIRE body per event `type` (envelope + `data`). Keyed by every
+ * {@link WebhookEventType}, so `tsc` fails if a fixture is missing (15-fixture completeness).
+ * Some entries deliberately omit an optional field (`due_date_rule`, `cnpj`) to exercise
+ * R-OPTIONAL on the deserialization side.
+ */
+export const WEBHOOK_EVENT_WIRE_BODIES: Record<WebhookEventType, Record<string, unknown>> = {
+  'customer.created': {
+    ...wireEnvelope('customer.created'),
     data: {
-      id: 'cus_test_123',
-      externalId: null,
+      id: 'cust_test_123',
+      external_id: null,
       name: 'Acme Pagamentos Ltda',
       email: 'ops@acme.test',
       phone: '+5511999999999',
       cpf: '123.456.789-00',
       cnpj: '12.345.678/0001-90',
-      tradingName: 'Acme',
+      trading_name: 'Acme',
       status: 'pending_kyc',
-      createdAt: 1775253599,
-      updatedAt: 1775253599,
+      kyc: [IDENTITY_REQUIREMENT_WIRE],
     },
-    ...overrides,
-  });
+  },
+  'customer.under_review': {
+    ...wireEnvelope('customer.under_review'),
+    data: { id: 'cust_test_123', external_id: 'partner-ref-1', status: 'under_review' },
+  },
+  'customer.active': {
+    ...wireEnvelope('customer.active'),
+    data: { id: 'cust_test_123', external_id: null, status: 'active' },
+  },
+  'customer.denied': {
+    ...wireEnvelope('customer.denied'),
+    data: {
+      id: 'cust_test_123',
+      external_id: null,
+      name: 'Acme Pagamentos Ltda',
+      email: 'ops@acme.test',
+      phone: '+5511999999999',
+      cpf: '123.456.789-00',
+      cnpj: '12.345.678/0001-90',
+      status: 'denied',
+    },
+  },
+  'customer.kyc_updated': {
+    ...wireEnvelope('customer.kyc_updated'),
+    data: {
+      id: 'cust_test_123',
+      external_id: null,
+      status: 'under_review',
+      kyc: [IDENTITY_REQUIREMENT_WIRE],
+    },
+  },
+  'credit_offer.available': {
+    ...wireEnvelope('credit_offer.available'),
+    data: {
+      id: 'co_test_123',
+      customer_id: 'cust_test_123',
+      external_id: 'partner-ref-123',
+      status: 'available',
+      approved_amount: 50000,
+      min_amount: 1000,
+      monthly_interest_rate: 2.5,
+      installments: 12,
+      due_date_rule: null,
+      valid_until: 1775340000,
+    },
+  },
+  'credit_offer.expired': {
+    ...wireEnvelope('credit_offer.expired'),
+    // due_date_rule omitted on purpose → exercises R-OPTIONAL.
+    data: {
+      id: 'co_test_123',
+      customer_id: 'cust_test_123',
+      external_id: null,
+      status: 'expired',
+      approved_amount: 50000,
+      min_amount: 1000,
+      monthly_interest_rate: 2.5,
+      installments: 12,
+      valid_until: 1775340000,
+    },
+  },
+  'loan.created': {
+    ...wireEnvelope('loan.created'),
+    data: {
+      id: 'ln_test_123',
+      credit_offer_id: 'co_test_123',
+      customer_id: 'cust_test_123',
+      status: 'awaiting_signatures',
+      requested_amount: 10000,
+      installment_count: 12,
+      signing_url: 'https://clicksign.test/sign/abc',
+    },
+  },
+  'loan.signature_received': {
+    ...wireEnvelope('loan.signature_received'),
+    data: {
+      id: 'ln_test_123',
+      status: 'awaiting_signatures',
+      signer: { name: 'João Silva', cpf: '123.456.789-00', signed_at: 1775253600 },
+      signatures_received: 1,
+      signatures_required: 2,
+    },
+  },
+  'loan.processing': {
+    ...wireEnvelope('loan.processing'),
+    data: {
+      id: 'ln_test_123',
+      credit_offer_id: 'co_test_123',
+      customer_id: 'cust_test_123',
+      status: 'processing',
+      ccb_number: 'CCB-2026-0001',
+      disbursement_method: 'pix',
+    },
+  },
+  'loan.active': {
+    ...wireEnvelope('loan.active'),
+    data: {
+      id: 'ln_test_123',
+      status: 'active',
+      requested_amount: 10000,
+      principal_amount: 10250,
+    },
+  },
+  'loan.payment_received': {
+    ...wireEnvelope('loan.payment_received'),
+    data: {
+      id: 'ln_test_123',
+      status: 'active',
+      payment: { amount: 875.5, paid_at: 1775253600, installment_number: 1 },
+    },
+  },
+  'loan.finished': {
+    ...wireEnvelope('loan.finished'),
+    data: { id: 'ln_test_123', status: 'finished' },
+  },
+  'loan.cancelled': {
+    ...wireEnvelope('loan.cancelled'),
+    data: { id: 'ln_test_123', status: 'cancelled' },
+  },
+  'loan.error': {
+    ...wireEnvelope('loan.error'),
+    // error present only on loan.error → exercises the optional nested object.
+    data: {
+      id: 'ln_test_123',
+      status: 'error',
+      error: { code: 'disbursement_failed', message: 'Bank rejected the transfer.' },
+    },
+  },
+};
+
+/** The 15 event types, for `it.each`-style exhaustive iteration in tests. */
+export const ALL_WEBHOOK_EVENT_TYPES = Object.keys(WEBHOOK_EVENT_WIRE_BODIES) as WebhookEventType[];
+
+/**
+ * A default `customer.created`-shaped WIRE body (snake_case, full envelope). The `data` is the
+ * bespoke `customer.created` payload (no timestamps; `kyc` present). `overrides` merge at the
+ * top (envelope) level — e.g. `{ id: 'evt_attacker' }` for a tampered-body case.
+ */
+export function defaultEventBody(overrides: Record<string, unknown> = {}): string {
+  return JSON.stringify({ ...WEBHOOK_EVENT_WIRE_BODIES['customer.created'], ...overrides });
 }
 
 /**
@@ -114,6 +276,14 @@ export function signWebhook(options: SignWebhookOptions = {}): WebhookFixture {
     body,
     secret,
   };
+}
+
+/** Sign the canonical WIRE body for a specific event `type` (story 007 — all 15 events). */
+export function signEvent(
+  type: WebhookEventType,
+  options: SignWebhookOptions = {},
+): WebhookFixture {
+  return signWebhook({ ...options, body: JSON.stringify(WEBHOOK_EVENT_WIRE_BODIES[type]) });
 }
 
 /**

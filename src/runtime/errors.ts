@@ -209,6 +209,29 @@ export class WebhookSignatureError extends DinieError {}
 /** A webhook timestamp fell outside the tolerance window. */
 export class WebhookTimestampError extends DinieError {}
 
+/**
+ * A webhook signature verified, but the payload's `type` is not in the openapi event catalog
+ * (`generated/events/`) — so `Webhooks.extract` has no per-type deserializer for it (D10/§5.6,
+ * OQ#2). Client-side (the payload is authentic; only its `type` is unrecognized), so it lives in
+ * the `DinieError` tree, NOT under `APIError`. THROWING (rather than passing the raw event
+ * through) is deliberate: a new event `type` is a contract change, and forcing this error makes
+ * the partner notice and the openapi-SoT conversation happen, instead of silently handing back
+ * an untyped blob. The unrecognized `type` is preserved on {@link eventType} and in the message.
+ */
+export class UnknownWebhookEventError extends DinieError {
+  /** The unrecognized webhook event `type` from the (verified) payload. */
+  readonly eventType: string;
+
+  constructor(eventType: string) {
+    super(
+      `Unknown webhook event type: ${JSON.stringify(eventType)}. It is not in the openapi event ` +
+        `catalog (generated/events). If Dinie added a new event type, the SDK must be updated ` +
+        `from the contract before it can deserialize this payload.`,
+    );
+    this.eventType = eventType;
+  }
+}
+
 // ── Dispatch registry (populated by generated/errors at load time) ────────────
 
 /** Constructor shape every server-response error class (`generated/errors/`) satisfies. */

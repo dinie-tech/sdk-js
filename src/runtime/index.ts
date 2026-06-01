@@ -18,6 +18,7 @@ export {
   OAuthError,
   WebhookSignatureError,
   WebhookTimestampError,
+  UnknownWebhookEventError,
 } from './errors.js';
 
 // Webhooks — Standard Webhooks v1 verification (story 005). `Webhooks.extract` returns the

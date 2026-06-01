@@ -17,7 +17,43 @@
 
 export { Dinie } from './client.js';
 export * from './errors/index.js';
-export type { CustomerCreatedEvent, WebhookEvent } from './events/customer-created.js';
+// Webhook events (story 007) — the 15-member `WebhookEvent` union + each member's model and
+// `data` payload type. The `*Wire` types, `EVENT_DESERIALIZERS`, and the `deserialize*`
+// functions stay INTERNAL (consumed by `runtime/webhooks.ts` + conformance via direct import).
+export type {
+  CreditOfferAvailableEvent,
+  CreditOfferEventData,
+  CreditOfferExpiredEvent,
+  CustomerActiveEvent,
+  CustomerCreatedData,
+  CustomerCreatedEvent,
+  CustomerDeniedData,
+  CustomerDeniedEvent,
+  CustomerKycUpdatedData,
+  CustomerKycUpdatedEvent,
+  CustomerStatusData,
+  CustomerUnderReviewEvent,
+  LoanActiveData,
+  LoanActiveEvent,
+  LoanCancelledEvent,
+  LoanCreatedData,
+  LoanCreatedEvent,
+  LoanError,
+  LoanErrorEvent,
+  LoanFinishedEvent,
+  LoanPayment,
+  LoanPaymentReceivedData,
+  LoanPaymentReceivedEvent,
+  LoanProcessingData,
+  LoanProcessingEvent,
+  LoanSignatureReceivedData,
+  LoanSignatureReceivedEvent,
+  LoanSigner,
+  LoanStatusData,
+  WebhookEvent,
+  WebhookEventBase,
+  WebhookEventType,
+} from './events/index.js';
 export type {
   CustomerBankAccount,
   CustomerBankAccountKind,

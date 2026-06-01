@@ -16,6 +16,7 @@ import type {
   Customer,
   CustomerBankAccount,
   CustomerBankAccountRequest,
+  CustomerCreatedData,
   CustomerCreatedEvent,
   CustomerListParams,
   PagePromise,
@@ -257,17 +258,20 @@ describe('public Webhooks.extract — typed WebhookEvent binding (D8)', () => {
     });
 
     expect(event.type).toBe('customer.created');
-    // The discriminant narrows `data` to `Customer` at compile time AND runtime.
+    // The discriminant narrows `data` to the bespoke event payload at compile time AND runtime.
     if (event.type === 'customer.created') {
       expect(event.data.cpf).toBe('123.456.789-00');
     }
   });
 
-  it('narrows event.data to Customer on the discriminant (type-level)', () => {
+  it('narrows event.data to its event payload on the discriminant (type-level)', () => {
     const event = {} as WebhookEvent;
-    expectTypeOf(event).toEqualTypeOf<CustomerCreatedEvent>();
     if (event.type === 'customer.created') {
-      expectTypeOf(event.data).toEqualTypeOf<Customer>();
+      // The 15-member union narrows to the exact member. `data` is the BESPOKE event payload
+      // (`CustomerCreatedData`), NOT the `Customer` read-model — story 007 surfaced that the
+      // openapi `WebhookEvent_CustomerCreated.data` is a slimmer, event-specific shape.
+      expectTypeOf(event).toEqualTypeOf<CustomerCreatedEvent>();
+      expectTypeOf(event.data).toEqualTypeOf<CustomerCreatedData>();
     }
   });
 });

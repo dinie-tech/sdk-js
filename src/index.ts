@@ -37,6 +37,7 @@ export {
   OAuthError,
   WebhookSignatureError,
   WebhookTimestampError,
+  UnknownWebhookEventError,
 } from './runtime/index.js';
 
 // Retry helper — `parseRetryAfter` (story 012): parse `err.headers['retry-after']` after

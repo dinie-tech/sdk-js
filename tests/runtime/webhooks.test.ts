@@ -1,7 +1,11 @@
 import * as nodeCrypto from 'node:crypto';
 
 import { Webhooks } from '../../src/runtime/webhooks.js';
-import { WebhookSignatureError, WebhookTimestampError } from '../../src/runtime/errors.js';
+import {
+  UnknownWebhookEventError,
+  WebhookSignatureError,
+  WebhookTimestampError,
+} from '../../src/runtime/errors.js';
 import {
   OTHER_WEBHOOK_SECRET,
   TEST_WEBHOOK_SECRET,
@@ -28,7 +32,38 @@ describe('Webhooks.extract', () => {
 
       expect(event.type).toBe('customer.created');
       expect(event.id).toBe('evt_test_123');
-      expect(event.data).toMatchObject({ id: 'cus_test_123', cpf: '123.456.789-00' });
+      expect(event.data).toMatchObject({ id: 'cust_test_123', cpf: '123.456.789-00' });
+    });
+
+    it('deserializes the FULL envelope to camelCase (api_version/delivery_id/timestamp — R5)', () => {
+      const { headers, body, secret } = signWebhook();
+
+      const event = Webhooks.extract({ headers, body, secret });
+
+      // V0.1 dropped these three; V0.2 freezes the full envelope, mapped snake→camel.
+      expect(event.apiVersion).toBe('2026-03-01');
+      expect(event.deliveryId).toBe('dlv_test_123');
+      expect(event.createdAt).toBe(1775253600);
+      expect(event.timestamp).toBe(1775253600);
+      // epoch seconds stay `number` (R-EPOCH) — never coerced to Date.
+      expect(typeof event.createdAt).toBe('number');
+      // The wire snake_case keys must NOT leak onto the surface.
+      expect(event).not.toHaveProperty('api_version');
+      expect(event).not.toHaveProperty('delivery_id');
+    });
+
+    it('deserializes the data per type (snake_case wire → camelCase surface, not a blind cast)', () => {
+      const { headers, body, secret } = signWebhook();
+
+      const event = Webhooks.extract({ headers, body, secret });
+
+      if (event.type === 'customer.created') {
+        // `trading_name` → `tradingName`; nested `kyc` decoded via the discriminated union.
+        expect(event.data.tradingName).toBe('Acme');
+        expect(event.data).not.toHaveProperty('trading_name');
+        expect(event.data.kyc[0]).toMatchObject({ requirementType: 'identity' });
+        expect(event.data.kyc[0]).not.toHaveProperty('requirement_type');
+      }
     });
 
     it('returns the concrete WebhookEvent union, narrowable by `type` (no generic)', () => {
@@ -255,6 +290,62 @@ describe('Webhooks.extract', () => {
       });
 
       expect(event.type).toBe('customer.created');
+    });
+  });
+
+  describe('unknown event type → UnknownWebhookEventError (OQ#2)', () => {
+    /** A signed body whose `type` is not in the openapi catalog. */
+    function signUnknown(type: unknown): { headers: Record<string, string>; body: string } {
+      const body = JSON.stringify({
+        id: 'evt_test_123',
+        type,
+        api_version: '2026-03-01',
+        created_at: 1775253600,
+        delivery_id: 'dlv_test_123',
+        timestamp: 1775253600,
+        data: {},
+      });
+      const { headers } = signWebhook({ body });
+      return { headers, body };
+    }
+
+    it('throws when a VERIFIED payload carries a type absent from the catalog', () => {
+      const { headers, body } = signUnknown('customer.exploded');
+
+      expect(() => Webhooks.extract({ headers, body, secret: TEST_WEBHOOK_SECRET })).toThrow(
+        UnknownWebhookEventError,
+      );
+    });
+
+    it('preserves the unrecognized `type` on the error', () => {
+      const { headers, body } = signUnknown('loan.exploded');
+
+      let caught: unknown;
+      try {
+        Webhooks.extract({ headers, body, secret: TEST_WEBHOOK_SECRET });
+      } catch (err) {
+        caught = err;
+      }
+      expect(caught).toBeInstanceOf(UnknownWebhookEventError);
+      expect((caught as UnknownWebhookEventError).eventType).toBe('loan.exploded');
+    });
+
+    it('does not match inherited Object keys (e.g. `toString`) as known types', () => {
+      const { headers, body } = signUnknown('toString');
+
+      expect(() => Webhooks.extract({ headers, body, secret: TEST_WEBHOOK_SECRET })).toThrow(
+        UnknownWebhookEventError,
+      );
+    });
+
+    it('verifies the signature BEFORE the type check (a forged unknown fails as signature)', () => {
+      const { headers, body } = signUnknown('whatever');
+      headers['webhook-signature'] = 'v1,Zm9yZ2VkLXNpZ25hdHVyZQ==';
+
+      // Deserialization (and the unknown-type guard) only runs after the HMAC matches.
+      expect(() => Webhooks.extract({ headers, body, secret: TEST_WEBHOOK_SECRET })).toThrow(
+        WebhookSignatureError,
+      );
     });
   });
 });
