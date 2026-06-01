@@ -61,6 +61,7 @@
  * consumed by the resource (and the conformance harness — story 008) via direct import.
  */
 
+import type { CreditOfferStatus } from './credit-offer.js';
 import type { CustomerId } from './ids.js';
 
 /** Customer lifecycle status (openapi enum). */
@@ -161,6 +162,22 @@ export interface CustomerListParams {
   limit?: number;
   /** Explicit cursor (the `id` of the last item of the previous page). Wire: `starting_after`. */
   startingAfter?: string;
+}
+
+/**
+ * Query params for `customers.listCreditOffers`. Mirrors the openapi query of
+ * `GET /customers/{id}/credit-offers`: pagination (`limit`/`starting_after`) plus the optional
+ * `status` filter. The architecture §3.1 summary table lists only `{limit?, startingAfter?}`,
+ * but the contract (SoT — D2) defines `status` too, so the deterministic generator output
+ * (§7.5) includes it; surfaced as an enrichment beyond the summary table.
+ */
+export interface CustomerCreditOffersListParams {
+  /** Page size, 1..100. */
+  limit?: number;
+  /** Explicit cursor (the `id` of the last item of the previous page). Wire: `starting_after`. */
+  startingAfter?: string;
+  /** Filter by offer status. Wire: `status` (single word — passed through unchanged). */
+  status?: CreditOfferStatus;
 }
 
 // ── (De)serializers — the convention stories 003–007 copy verbatim ──────────────

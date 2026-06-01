@@ -10,6 +10,7 @@
  * the `PagePromise` resolves the first `Page` · lazy single-fetch memoization.
  */
 
+import { APIPromise } from '../../src/runtime/api-promise.js';
 import type { ListEnvelope } from '../../src/runtime/http.js';
 import { Page, PagePromise, type FetchPage } from '../../src/runtime/paginator.js';
 
@@ -26,6 +27,12 @@ function envelope(ids: string[], hasMore: boolean): ListEnvelope<Item> {
  * Fake `fetchPage`: serves `pages` in order and records each cursor it received.
  * `cursors[0]` is the first-page cursor (always `undefined`); `cursors[n]` is what the
  * paginator passed to fetch page `n` — i.e. the last id of page `n-1`.
+ *
+ * Returns an {@link APIPromise} (the contract `FetchPage` now requires — story 003 dropped the
+ * plain-`Promise` bridge): a minimal `{ status: 200, headers: {} }` stands in for the HTTP
+ * response, matching what a real `http.requestPage(...)._thenUnwrap(...)` would thread through.
+ * The cursor/call bookkeeping runs synchronously on each `fetchPage` call (as before); the
+ * envelope (or the over-fetch error) is produced lazily inside the `APIPromise`.
  */
 function makeFetchPage(pages: ListEnvelope<Item>[]): {
   fetchPage: FetchPage<Item>;
@@ -34,14 +41,16 @@ function makeFetchPage(pages: ListEnvelope<Item>[]): {
 } {
   const cursors: (string | undefined)[] = [];
   let call = 0;
-  const fetchPage: FetchPage<Item> = async (cursor) => {
+  const fetchPage: FetchPage<Item> = (cursor) => {
     cursors.push(cursor);
     const page = pages[call];
     call += 1;
-    if (page === undefined) {
-      throw new Error(`fetchPage called more times than pages provided (call #${call})`);
-    }
-    return page;
+    return APIPromise.fromParsed<ListEnvelope<Item>>(async () => {
+      if (page === undefined) {
+        throw new Error(`fetchPage called more times than pages provided (call #${call})`);
+      }
+      return { data: page, response: { status: 200, headers: {} } };
+    });
   };
   return { fetchPage, cursors, callCount: () => call };
 }

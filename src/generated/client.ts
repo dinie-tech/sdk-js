@@ -10,8 +10,8 @@
  *      resolved inside the runtime logger, so it is intentionally not handled here.)
  *   3. Compose the transport + resources — build one {@link HttpClient} (which builds the
  *      `TokenManager` internally on the same dispatcher) and hang each resource off it.
- *   4. Expose `rate_limit` — the latest rate-limit snapshot (snake_case per the V0.1 demo,
- *      D4 — provisional; freezes in V0.2).
+ *   4. Expose `rateLimit` — the latest rate-limit snapshot. camelCase (D12/R7), correcting the
+ *      `rate_limit` the V0.1 demo inherited: the SDK surface is camelCase end to end.
  *
  * ── runtime ↔ generated boundary ──
  * Lives in `generated/`. Imports only from `runtime/` (the transport, config type, error
@@ -33,7 +33,7 @@ import { Customers } from './resources/customers.js';
  * const customer = await client.customers.create({ email, phone, cpf, cnpj });
  */
 export class Dinie {
-  /** The customers resource (`create` / `get` / `list`). */
+  /** The customers resource — the full non-KYC surface (create/get/list/update + sub-paths). */
   readonly customers: Customers;
 
   readonly #http: HttpClient;
@@ -73,7 +73,7 @@ export class Dinie {
   }
 
   /** Latest rate-limit snapshot from the most recent response; `null` before the first call. */
-  get rate_limit(): RateLimit | null {
+  get rateLimit(): RateLimit | null {
     return this.#http.rateLimit;
   }
 }

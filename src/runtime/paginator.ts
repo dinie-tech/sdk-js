@@ -34,14 +34,8 @@
  * nature. `Page`/`PagePromise` ARE public surface — re-exported via `runtime/index.ts` (§6).
  */
 
-import { APIPromise, type APIResponse, type HttpResponse } from './api-promise.js';
+import type { APIPromise, APIResponse, HttpResponse } from './api-promise.js';
 import type { ListEnvelope } from './http.js';
-
-/**
- * Status used for the synthesized first-page response on the legacy plain-`Promise`
- * fetch path: a list envelope only exists after a successful (2xx) list response.
- */
-const SUCCESS_LIST_STATUS = 200;
 
 /**
  * The minimum an item must expose for cursor pagination: a stable `id`. The next
@@ -53,18 +47,19 @@ export interface HasId {
 }
 
 /**
- * Fetch one page given an optional cursor. Injected by the resource (story 009): its
- * implementation calls `http.requestPage` with `starting_after = cursor` and returns
- * the wire {@link ListEnvelope}. `undefined` cursor ⇒ the first page (no
- * `starting_after`). The paginator owns *when* to call this and *what* cursor to pass;
- * the resource owns *how* it reaches the network.
+ * Fetch one page given an optional cursor. Injected by the resource: its implementation calls
+ * `http.requestPage(...)._thenUnwrap(toWirePage)` and returns the resulting {@link APIPromise}
+ * of the wire {@link ListEnvelope}. `undefined` cursor ⇒ the first page (no `starting_after`).
+ * The paginator owns *when* to call this and *what* cursor to pass; the resource owns *how* it
+ * reaches the network.
  *
- * The return is a `PromiseLike` so a resource may hand back either a plain `Promise` or an
- * {@link APIPromise} (`http.requestPage(...)._thenUnwrap(toWirePage)`). When it is an
- * `APIPromise`, {@link PagePromise} threads its real HTTP response into
- * `.asResponse()`/`.withResponse()`; otherwise a minimal successful-list response is used.
+ * The return is an {@link APIPromise} (not a bare `Promise`): {@link PagePromise} threads its
+ * real HTTP response into `.asResponse()`/`.withResponse()` for the first page. (V0.1 typed
+ * this as `PromiseLike` with a synthetic `{ status: 200, headers: {} }` fallback for a
+ * plain-`Promise` fetch; that path is dead now that every resource returns an `APIPromise`,
+ * so story 003 removed it.)
  */
-export type FetchPage<T> = (cursor?: string) => PromiseLike<ListEnvelope<T>>;
+export type FetchPage<T> = (cursor?: string) => APIPromise<ListEnvelope<T>>;
 
 /**
  * One page of a cursor-paginated list. Holds the page's `data` and the `hasMore` flag
@@ -148,27 +143,14 @@ export class PagePromise<T extends HasId> implements Promise<Page<T>>, AsyncIter
 
   /**
    * Fetch (once) and wrap the first page as an {@link APIPromise} so `await` yields the
-   * `Page` and `.asResponse()`/`.withResponse()` expose the underlying response. Lazy +
-   * memoized: the first consumption fetches; later consumers reuse the same result.
+   * `Page` and `.asResponse()`/`.withResponse()` expose the first page's real HTTP response.
+   * Lazy + memoized: the first consumption fetches; later consumers reuse the same result.
+   * `_thenUnwrap` maps the wire envelope to a `Page` while preserving the underlying response.
    */
   #loadFirstPage(): APIPromise<Page<T>> {
-    this.#firstPage ??= APIPromise.fromParsed<Page<T>>(() => {
-      const pending = this.#fetchPage();
-      // Thread the real HTTP response when the resource hands back an APIPromise (the path
-      // resources take via `http.requestPage` — story 003+). A legacy plain-Promise fetch
-      // carries no response, so fall back to a minimal successful-list response.
-      const responsePromise: Promise<HttpResponse> =
-        pending instanceof APIPromise
-          ? pending.asResponse()
-          : Promise.resolve({ status: SUCCESS_LIST_STATUS, headers: {} });
-      const dataPromise = Promise.resolve<ListEnvelope<T>>(pending).then(
-        (envelope) => new Page(envelope, this.#fetchPage),
-      );
-      return Promise.all([dataPromise, responsePromise]).then(([data, response]) => ({
-        data,
-        response,
-      }));
-    });
+    this.#firstPage ??= this.#fetchPage()._thenUnwrap(
+      (envelope) => new Page(envelope, this.#fetchPage),
+    );
     return this.#firstPage;
   }
 

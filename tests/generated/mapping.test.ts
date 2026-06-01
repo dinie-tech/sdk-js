@@ -10,13 +10,18 @@ import { Customers } from '../../src/generated/resources/customers.js';
 import { HttpClient } from '../../src/runtime/http.js';
 import { Dinie, Webhooks } from '../../src/index.js';
 import type {
+  BiometricsSession,
   CreateCustomerRequest,
+  CreditOffer,
   Customer,
+  CustomerBankAccount,
+  CustomerBankAccountRequest,
   CustomerCreatedEvent,
   CustomerListParams,
   PagePromise,
   RateLimit,
   RequestOptions,
+  UpdateCustomerRequest,
   WebhookEvent,
 } from '../../src/index.js';
 import { useMockUndici } from '../_helpers/mock-undici.js';
@@ -38,10 +43,35 @@ async function _publicSurfaceTypeCheck(): Promise<void> {
   const listParams: CustomerListParams = { limit: 10 };
   const options: RequestOptions = {};
 
+  const updateParams: UpdateCustomerRequest = { email: 'a@b.test' };
+  const bankAccountParams: CustomerBankAccountRequest = {
+    bankId: '001',
+    kind: 'checking',
+    branch: '0001',
+    number: '1234567',
+    digit: '0',
+  };
+
   expectTypeOf(client.customers.create(createParams, options)).resolves.toEqualTypeOf<Customer>();
   expectTypeOf(client.customers.get('cust_1', options)).resolves.toEqualTypeOf<Customer>();
   expectTypeOf(client.customers.list(listParams)).toEqualTypeOf<PagePromise<Customer>>();
-  expectTypeOf(client.rate_limit).toEqualTypeOf<RateLimit | null>();
+  expectTypeOf(
+    client.customers.update('cust_1', updateParams, options),
+  ).resolves.toEqualTypeOf<Customer>();
+  expectTypeOf(
+    client.customers.getBankAccount('cust_1', options),
+  ).resolves.toEqualTypeOf<CustomerBankAccount>();
+  expectTypeOf(
+    client.customers.upsertBankAccount('cust_1', bankAccountParams, options),
+  ).resolves.toEqualTypeOf<CustomerBankAccount>();
+  expectTypeOf(
+    client.customers.createBiometricsSession('cust_1'),
+  ).resolves.toEqualTypeOf<BiometricsSession>();
+  expectTypeOf(client.customers.listCreditOffers('cust_1', { status: 'available' })).toEqualTypeOf<
+    PagePromise<CreditOffer>
+  >();
+  // camelCase getter (D12/R7) — the V0.1 demo's snake_case `rate_limit` is gone.
+  expectTypeOf(client.rateLimit).toEqualTypeOf<RateLimit | null>();
 
   for await (const customer of client.customers.list()) {
     expectTypeOf(customer).toEqualTypeOf<Customer>();

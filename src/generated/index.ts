@@ -18,10 +18,17 @@
 export { Dinie } from './client.js';
 export * from './errors/index.js';
 export type { CustomerCreatedEvent, WebhookEvent } from './events/customer-created.js';
+export type {
+  CustomerBankAccount,
+  CustomerBankAccountKind,
+  CustomerBankAccountRequest,
+} from './types/bank-account.js';
+export type { BiometricsSession, CreateBiometricsSessionParams } from './types/biometrics.js';
 export type { CreditOffer, CreditOfferStatus } from './types/credit-offer.js';
 export type {
   CreateCustomerRequest,
   Customer,
+  CustomerCreditOffersListParams,
   CustomerListParams,
   CustomerStatus,
   UpdateCustomerRequest,
