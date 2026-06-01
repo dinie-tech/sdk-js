@@ -89,8 +89,8 @@ describe('customers.create — auto idempotency + camelCase ↔ snake_case mappi
       email: 'ops@acme.test',
     });
 
-    // Auto-generated Idempotency-Key (D9) on the write.
-    expect(endpoint.lastRequest?.headers['idempotency-key']).toMatch(/^dinie-sdk-retry-/);
+    // Auto-generated X-Idempotency-Key (R4/D9) on the write.
+    expect(endpoint.lastRequest?.headers['x-idempotency-key']).toMatch(/^dinie-sdk-retry-/);
     // camelCase params → snake_case wire body.
     expect(JSON.parse(endpoint.lastRequest!.body)).toEqual({
       tax_id: '12345678000190',

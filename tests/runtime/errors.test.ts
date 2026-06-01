@@ -175,9 +175,30 @@ describe('APIError.fromResponse — status fallback (registry-driven)', () => {
     expect((err as APIStatusError).status).toBe(418);
   });
 
-  it('treats unmapped 5xx as a ServerError', async () => {
-    const err = await APIError.fromResponse(makeResponse({ statusCode: 502 }));
-    expect(err).toBeInstanceOf(ServerError);
+  it('treats unmapped 5xx (502/504) as a ServerError — body-less gateway errors (§6.2)', async () => {
+    expect(await APIError.fromResponse(makeResponse({ statusCode: 502 }))).toBeInstanceOf(
+      ServerError,
+    );
+    expect(await APIError.fromResponse(makeResponse({ statusCode: 504 }))).toBeInstanceOf(
+      ServerError,
+    );
+  });
+
+  it('routes 410 Gone (no type URL) to a generic APIStatusError carrying code/request_id (§6.2)', async () => {
+    // 410 has no openapi `type` URL and no dedicated class (no GoneError this round) — it
+    // must fall back to a generic APIStatusError, not a subclass, while still surfacing
+    // `code` and `request_id`.
+    const res = makeResponse({
+      statusCode: 410,
+      headers: { 'x-request-id': 'req_gone_1' },
+      body: { title: 'Gone', status: 410, code: 'credential_revoked' },
+    });
+    const err = (await APIError.fromResponse(res)) as APIStatusError;
+    expect(err).toBeInstanceOf(APIStatusError);
+    expect(err.constructor).toBe(APIStatusError);
+    expect(err.status).toBe(410);
+    expect(err.code).toBe('credential_revoked');
+    expect(err.request_id).toBe('req_gone_1');
   });
 });
 

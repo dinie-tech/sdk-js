@@ -44,6 +44,8 @@ describe('redactBody — PII/secret fields by name', () => {
         password: 'hunter2',
         secret: 'sk_live',
         client_secret: 'cs_live',
+        access_token: 'eyJhbGciOi.jwt.payload',
+        phone: '+5511999998888',
         name: 'Maria',
       }),
     ).toEqual({
@@ -54,7 +56,20 @@ describe('redactBody — PII/secret fields by name', () => {
       password: '[REDACTED]',
       secret: '[REDACTED]',
       client_secret: '[REDACTED]',
+      access_token: '[REDACTED]',
+      phone: '[REDACTED]',
       name: 'Maria',
+    });
+  });
+
+  it('redacts access_token (token-endpoint body) and phone (E.164 PII) — §5.4', () => {
+    // The OAuth2 token-endpoint response body would otherwise leak the JWT at debug level.
+    expect(
+      redactBody({ access_token: 'eyJ.header.sig', token_type: 'bearer', expires_in: 3600 }),
+    ).toEqual({ access_token: '[REDACTED]', token_type: 'bearer', expires_in: 3600 });
+    // Case-insensitive, and nested under a customer payload.
+    expect(redactBody({ customer: { Phone: '+5511999998888', name: 'Ana' } })).toEqual({
+      customer: { Phone: '[REDACTED]', name: 'Ana' },
     });
   });
 

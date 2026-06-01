@@ -54,7 +54,14 @@ const REDACTED_HEADERS: ReadonlySet<string> = new Set([
   'proxy-authorization',
 ]);
 
-/** Body field names (lowercased) that carry PII/secrets → masked recursively. */
+/**
+ * Body field names (lowercased) that carry PII/secrets → masked recursively.
+ *
+ * The wire uses `cpf`/`cnpj` (not `tax_id` — that field does not exist), so both real PII
+ * fields are covered. V0.2 freeze (§5.4) adds `access_token` (the JWT in the token-endpoint
+ * `TokenResponse` body — debug logging would otherwise leak it) and `phone` (E.164 PII).
+ * `secret`/`client_secret` already cover `CredentialWithSecret`/`WebhookEndpointWithSecret`.
+ */
 const REDACTED_BODY_FIELDS: ReadonlySet<string> = new Set([
   'cpf',
   'cnpj',
@@ -63,6 +70,8 @@ const REDACTED_BODY_FIELDS: ReadonlySet<string> = new Set([
   'password',
   'secret',
   'client_secret',
+  'access_token',
+  'phone',
 ]);
 
 /** Headers as undici delivers them (lowercased keys; arrays for repeated headers). */

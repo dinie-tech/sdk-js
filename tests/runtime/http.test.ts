@@ -66,7 +66,7 @@ describe('HttpClient — header assembly', () => {
     expect(req?.headers['authorization']).toBe('Bearer tok-1');
     expect(req?.headers['accept']).toBe('application/json');
     expect(req?.headers['content-type']).toBe('application/json');
-    expect(req?.headers['idempotency-key']).toMatch(/^dinie-sdk-retry-/);
+    expect(req?.headers['x-idempotency-key']).toMatch(/^dinie-sdk-retry-/);
     expect(req?.headers['user-agent']).toMatch(
       /^Dinie-SDK-JS\/0\.1\.0 \(api-version=2026-05-10; node\/.+\)$/,
     );
@@ -88,7 +88,7 @@ describe('HttpClient — header assembly', () => {
 
     await makeClient().request<unknown>(GET_CUSTOMER);
 
-    expect(ep.lastRequest?.headers['idempotency-key']).toBeUndefined();
+    expect(ep.lastRequest?.headers['x-idempotency-key']).toBeUndefined();
     expect(ep.lastRequest?.headers['content-type']).toBeUndefined();
   });
 
@@ -105,7 +105,7 @@ describe('HttpClient — header assembly', () => {
       options: { idempotencyKey: 'my-key' },
     });
 
-    expect(ep.lastRequest?.headers['idempotency-key']).toBe('my-key');
+    expect(ep.lastRequest?.headers['x-idempotency-key']).toBe('my-key');
   });
 
   it('lets a caller header override a default and a null value remove one', async () => {
@@ -274,7 +274,7 @@ describe('HttpClient — retry integration', () => {
 
     const [first, second] = ep.requests;
     // Same Idempotency-Key across the retry (D9) — never a duplicate resource.
-    expect(first?.headers['idempotency-key']).toBe(second?.headers['idempotency-key']);
+    expect(first?.headers['x-idempotency-key']).toBe(second?.headers['x-idempotency-key']);
     // Retry counter climbs; the same cached token is reused (one token POST).
     expect(first?.headers['x-dinie-retry-count']).toBeUndefined();
     expect(second?.headers['x-dinie-retry-count']).toBe('1');
@@ -351,8 +351,8 @@ describe('HttpClient — 401 one-shot re-auth', () => {
     expect(ep.requests[0]?.headers['authorization']).toBe('Bearer dinie-test-access-token-1');
     expect(ep.requests[1]?.headers['authorization']).toBe('Bearer dinie-test-access-token-2');
     // Same Idempotency-Key preserved across the re-auth; re-auth is not a backoff sleep.
-    expect(ep.requests[0]?.headers['idempotency-key']).toBe(
-      ep.requests[1]?.headers['idempotency-key'],
+    expect(ep.requests[0]?.headers['x-idempotency-key']).toBe(
+      ep.requests[1]?.headers['x-idempotency-key'],
     );
     expect(sleep).not.toHaveBeenCalled();
   });
@@ -374,5 +374,106 @@ describe('HttpClient — 401 one-shot re-auth', () => {
     // 2 token POSTs. It does not loop.
     expect(ep.callCount).toBe(2);
     expect(tokens.callCount).toBe(2);
+  });
+});
+
+describe('HttpClient — idempotency opt-out (config.idempotency, R4/D9)', () => {
+  /** A client with auto-idempotency disabled globally. */
+  function makeOptedOutClient(): HttpClient {
+    return new HttpClient({
+      clientId: 'client-abc',
+      clientSecret: 'secret-xyz',
+      baseUrl: mock.origin,
+      dispatcher: mock.dispatcher,
+      idempotency: false,
+    });
+  }
+
+  it('omits X-Idempotency-Key on a non-GET when config.idempotency is false', async () => {
+    mock.mockToken();
+    const ep = mock.mockEndpoint({
+      method: 'POST',
+      path: '/v3/customers',
+      responses: { statusCode: 201, body: { id: 'cus_1' } },
+    });
+
+    await makeOptedOutClient().request<unknown>(POST_CUSTOMER);
+
+    expect(ep.lastRequest?.headers['x-idempotency-key']).toBeUndefined();
+  });
+
+  it('still honors an explicit per-call idempotencyKey even when opted out', async () => {
+    mock.mockToken();
+    const ep = mock.mockEndpoint({
+      method: 'POST',
+      path: '/v3/customers',
+      responses: { statusCode: 201, body: { id: 'cus_1' } },
+    });
+
+    await makeOptedOutClient().request<unknown>({
+      ...POST_CUSTOMER,
+      options: { idempotencyKey: 'explicit-key' },
+    });
+
+    expect(ep.lastRequest?.headers['x-idempotency-key']).toBe('explicit-key');
+  });
+});
+
+describe('HttpClient — APIPromise dual nature (D15)', () => {
+  it('.withResponse() returns the parsed body AND the HTTP response (status + headers)', async () => {
+    mock.mockToken();
+    mock.mockEndpoint({
+      method: 'GET',
+      path: '/v3/customers/cus_1',
+      responses: {
+        statusCode: 200,
+        body: { id: 'cus_1', object: 'customer' },
+        headers: { 'x-request-id': 'req_dual_1' },
+      },
+    });
+
+    const { data, response } = await makeClient()
+      .request<{ id: string; object: string }>(GET_CUSTOMER)
+      .withResponse();
+
+    expect(data).toEqual({ id: 'cus_1', object: 'customer' });
+    expect(response.status).toBe(200);
+    expect(response.headers['x-request-id']).toBe('req_dual_1');
+  });
+
+  it('.asResponse() exposes the response (status + headers)', async () => {
+    mock.mockToken();
+    mock.mockEndpoint({
+      method: 'GET',
+      path: '/v3/customers/cus_1',
+      responses: {
+        statusCode: 200,
+        body: { id: 'cus_1' },
+        headers: { 'x-request-id': 'req_dual_2' },
+      },
+    });
+
+    const response = await makeClient().request<{ id: string }>(GET_CUSTOMER).asResponse();
+
+    expect(response.status).toBe(200);
+    expect(response.headers['x-request-id']).toBe('req_dual_2');
+  });
+
+  it('reads the body once across await + .withResponse() on the same promise', async () => {
+    mock.mockToken();
+    mock.mockEndpoint({
+      method: 'GET',
+      path: '/v3/customers/cus_1',
+      responses: { statusCode: 200, body: { id: 'cus_1', n: 1 } },
+    });
+
+    const promise = makeClient().request<{ id: string; n: number }>(GET_CUSTOMER);
+    const data = await promise;
+    const withResp = await promise.withResponse();
+
+    // A second body read on the consumed stream would yield undefined — equality proves the
+    // parse is memoized (read exactly once).
+    expect(data).toEqual({ id: 'cus_1', n: 1 });
+    expect(withResp.data).toEqual(data);
   });
 });

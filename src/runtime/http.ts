@@ -14,7 +14,7 @@
  *   6. on success, parse and return the typed body;
  *   7. on 401, run the one-shot re-auth (`invalidate()` + fresh token), then give up
  *      with `AuthError` if a second 401 follows (D6 — no loop);
- *   8. on a retryable status (`{429,502,503,504}` — D5) or a transient transport
+ *   8. on a retryable status (`{408,429,500,502,503,504}` — D8) or a transient transport
  *      error, back off (`retryDelay`) and retry while attempts remain, bumping
  *      `X-Dinie-Retry-Count`;
  *   9. otherwise map the response to a typed error via `APIError.fromResponse`.
@@ -46,6 +46,7 @@
 import type { Dispatcher } from 'undici';
 import { Pool } from 'undici';
 
+import { APIPromise, type RawResponse } from './api-promise.js';
 import { APIError, APIConnectionError, APITimeoutError } from './errors.js';
 // Controlled inverse import — see the boundary note above. `AuthError` is thrown directly
 // on a persistent 401; importing the barrel also registers the full catalog.
@@ -79,6 +80,13 @@ export interface DinieConfig {
   logLevel?: LogLevel;
   /** Custom log sink. Defaults to `console`. */
   logger?: Logger;
+  /**
+   * Auto-generate an `X-Idempotency-Key` on every non-GET write. Default `true` (D9). Set
+   * `false` to opt out globally — a documented foot-gun in a fintech SDK: without a stable
+   * key a retried `POST` can create a duplicate resource. A per-call
+   * `RequestOptions.idempotencyKey` is still honored even when this is `false`.
+   */
+  idempotency?: boolean;
   /** Injected transport (D3 test seam). Defaults to `new Pool(origin)`. */
   dispatcher?: Dispatcher;
 }
@@ -171,6 +179,8 @@ export class HttpClient {
   readonly #rateLimit: RateLimitTracker;
   readonly #timeout: number;
   readonly #maxRetries: number;
+  /** Auto-generate `X-Idempotency-Key` on non-GET writes (D9). Default `true`; opt-out via config. */
+  readonly #idempotency: boolean;
   readonly #sleep: (ms: number) => Promise<void>;
 
   constructor(config: DinieConfig, internals: HttpClientInternals = {}) {
@@ -178,6 +188,7 @@ export class HttpClient {
     this.#origin = new URL(baseUrl).origin;
     this.#timeout = config.timeout ?? DEFAULT_TIMEOUT_MS;
     this.#maxRetries = config.maxRetries ?? DEFAULT_MAX_RETRIES;
+    this.#idempotency = config.idempotency ?? true;
     this.#sleep = internals.sleep ?? defaultSleep;
 
     // The client owns the dispatcher; the TokenManager rides the SAME transport so
@@ -202,19 +213,44 @@ export class HttpClient {
   }
 
   /**
-   * Run one logical request end-to-end and return its parsed body.
+   * Run one logical request end-to-end. Returns a dual-natured {@link APIPromise} (D15):
+   * `await` it for the parsed body `T`, or call `.asResponse()` / `.withResponse()` for the
+   * underlying HTTP response. The body is read + parsed lazily and exactly once.
    *
+   * The returned promise rejects with:
    * @throws {APIError} A typed subclass for any non-2xx response that is not retried.
    * @throws {AuthError} A 401 that persists after the one-shot re-auth.
    * @throws {APITimeoutError} The request timed out and the retry budget is exhausted.
    * @throws {APIConnectionError} A transport failure (or caller cancellation).
    */
-  async request<T>(req: InternalRequest): Promise<T> {
+  request<T>(req: InternalRequest): APIPromise<T> {
+    return APIPromise.fromResponse<T>(this.#execute(req), (raw) => parseBody<T>(raw));
+  }
+
+  /**
+   * Resolve the `X-Idempotency-Key` for a request (D9). A per-call override always wins —
+   * even when auto-idempotency is opted out globally (`config.idempotency: false`), an
+   * explicit `options.idempotencyKey` is an explicit opt-in. Otherwise a key is auto-minted
+   * for non-GET writes unless opted out. Returns `undefined` when no key should be sent.
+   */
+  #resolveIdempotencyKey(req: InternalRequest): string | undefined {
+    if (!req.idempotent) return undefined;
+    if (req.options?.idempotencyKey !== undefined) return req.options.idempotencyKey;
+    if (!this.#idempotency) return undefined;
+    return generateIdempotencyKey();
+  }
+
+  /**
+   * Run the request lifecycle — mint the Idempotency-Key once before the loop (D9), obtain a
+   * Bearer token, assemble headers, dispatch, fold rate-limit headers, then retry/re-auth as
+   * needed — and resolve to the raw successful response with its body UNREAD (the
+   * {@link APIPromise} from {@link request} reads + parses it). Non-2xx responses that are
+   * not retried reject here with a typed {@link APIError}.
+   */
+  async #execute(req: InternalRequest): Promise<RawResponse> {
     // Idempotency-Key ONCE, before the loop (D9): a non-GET reuses the same key
     // across every retry so a retry never creates a duplicate resource.
-    const idempotencyKey = req.idempotent
-      ? (req.options?.idempotencyKey ?? generateIdempotencyKey())
-      : undefined;
+    const idempotencyKey = this.#resolveIdempotencyKey(req);
     const maxRetries = req.options?.maxRetries ?? this.#maxRetries;
     const timeout = req.options?.timeout ?? this.#timeout;
     const requestLogID = newRequestLogID();
@@ -287,7 +323,9 @@ export class HttpClient {
       });
 
       if (res.statusCode < 300) {
-        return await parseBody<T>(res);
+        // Success: hand the raw response back with its body UNREAD — APIPromise parses it
+        // lazily (so `.asResponse()` works and the body is read at most once).
+        return res;
       }
 
       // 401 one-shot (D6): drop the token, re-auth once, retry.
@@ -316,11 +354,13 @@ export class HttpClient {
   }
 
   /**
-   * List variant consumed by the paginator (story 008) / `Customers.list`. Same
-   * lifecycle as {@link request}; the return type is pinned to the wire list envelope
-   * so the paginator can read `data`/`has_more` without re-casting.
+   * List variant consumed by the paginator (story 008) / `Customers.list`. Same lifecycle as
+   * {@link request}; the body type is pinned to the wire list envelope so the paginator can
+   * read `data`/`has_more` without re-casting. Returns an {@link APIPromise} (dual-natured):
+   * `await` it for the envelope, or `.asResponse()`/`.withResponse()` for the response — the
+   * paginator threads that response into `PagePromise.withResponse()`.
    */
-  async requestPage<T>(req: InternalRequest): Promise<ListEnvelope<T>> {
+  requestPage<T>(req: InternalRequest): APIPromise<ListEnvelope<T>> {
     return this.request<ListEnvelope<T>>(req);
   }
 
@@ -346,7 +386,9 @@ export class HttpClient {
       'x-dinie-sdk-runtime': `node/${NODE_VERSION}`,
     };
     if (contentType !== undefined) headers['content-type'] = contentType;
-    if (idempotencyKey !== undefined) headers['idempotency-key'] = idempotencyKey;
+    // `X-Idempotency-Key` per the openapi `IdempotencyKey` parameter (R4/D9). Sent lowercased
+    // on the wire; was `idempotency-key` in the V0.1 sketch.
+    if (idempotencyKey !== undefined) headers['x-idempotency-key'] = idempotencyKey;
     if (attempt > 0) headers['x-dinie-retry-count'] = String(attempt);
 
     // Caller overrides: `null` removes a default header; any string replaces it.
@@ -395,7 +437,7 @@ function serializeBody(body: unknown): { body: string; contentType: string } | u
 }
 
 /** Read + parse a successful response body to `T` (JSON, or raw text fallback). */
-async function parseBody<T>(res: Dispatcher.ResponseData): Promise<T> {
+async function parseBody<T>(res: RawResponse): Promise<T> {
   if (res.statusCode === 204) {
     await drainBody(res);
     return undefined as T;
@@ -410,7 +452,7 @@ async function parseBody<T>(res: Dispatcher.ResponseData): Promise<T> {
 }
 
 /** Drain + discard a response body so the connection is freed (retry/reauth paths). */
-async function drainBody(res: Dispatcher.ResponseData): Promise<void> {
+async function drainBody(res: RawResponse): Promise<void> {
   try {
     await res.body.dump();
   } catch {

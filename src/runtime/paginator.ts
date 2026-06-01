@@ -16,7 +16,9 @@
  *     `Promise<Page<T>>` (so `await list()` yields the first `Page`) AND an
  *     `AsyncIterable<T>` (so `for await (const c of list())` iterates every item across
  *     every page WITHOUT an explicit `await` before the `for`). This dual nature is the
- *     only way to support both ergonomics from one return value (D7).
+ *     only way to support both ergonomics from one return value (D7). V0.2 composes
+ *     {@link APIPromise} (D15) so a `list()` also exposes `.asResponse()`/`.withResponse()`
+ *     for the first page — the same surface every other method has.
  *
  * ── Decoupled from transport ──
  * The paginator is generic over an injected `fetchPage(cursor?)` (see {@link FetchPage})
@@ -27,11 +29,19 @@
  *
  * ── runtime ↔ generated boundary ──
  * Lives in `runtime/`. The only `http` dependency is the type-only `ListEnvelope<T>`
- * (erased at compile time under `verbatimModuleSyntax`, so there is no runtime cycle).
- * `Page`/`PagePromise` ARE public surface — re-exported via `runtime/index.ts` (§6).
+ * (erased at compile time under `verbatimModuleSyntax`, so there is no runtime cycle). It
+ * also composes the sibling-runtime {@link APIPromise} (D15) for the first page's dual
+ * nature. `Page`/`PagePromise` ARE public surface — re-exported via `runtime/index.ts` (§6).
  */
 
+import { APIPromise, type APIResponse, type HttpResponse } from './api-promise.js';
 import type { ListEnvelope } from './http.js';
+
+/**
+ * Status used for the synthesized first-page response on the legacy plain-`Promise`
+ * fetch path: a list envelope only exists after a successful (2xx) list response.
+ */
+const SUCCESS_LIST_STATUS = 200;
 
 /**
  * The minimum an item must expose for cursor pagination: a stable `id`. The next
@@ -48,8 +58,13 @@ export interface HasId {
  * the wire {@link ListEnvelope}. `undefined` cursor ⇒ the first page (no
  * `starting_after`). The paginator owns *when* to call this and *what* cursor to pass;
  * the resource owns *how* it reaches the network.
+ *
+ * The return is a `PromiseLike` so a resource may hand back either a plain `Promise` or an
+ * {@link APIPromise} (`http.requestPage(...)._thenUnwrap(toWirePage)`). When it is an
+ * `APIPromise`, {@link PagePromise} threads its real HTTP response into
+ * `.asResponse()`/`.withResponse()`; otherwise a minimal successful-list response is used.
  */
-export type FetchPage<T> = (cursor?: string) => Promise<ListEnvelope<T>>;
+export type FetchPage<T> = (cursor?: string) => PromiseLike<ListEnvelope<T>>;
 
 /**
  * One page of a cursor-paginated list. Holds the page's `data` and the `hasMore` flag
@@ -124,20 +139,40 @@ export class Page<T extends HasId> implements AsyncIterable<T> {
  */
 export class PagePromise<T extends HasId> implements Promise<Page<T>>, AsyncIterable<T> {
   readonly #fetchPage: FetchPage<T>;
-  /** Memoized first-page request; created on first consumption (lazy). */
-  #firstPage: Promise<Page<T>> | undefined;
+  /** Memoized first-page request as a dual-natured {@link APIPromise}; lazy. */
+  #firstPage: APIPromise<Page<T>> | undefined;
 
   constructor(fetchPage: FetchPage<T>) {
     this.#fetchPage = fetchPage;
   }
 
-  /** Fetch (once) and wrap the first page. Subsequent calls reuse the same promise. */
-  #loadFirstPage(): Promise<Page<T>> {
-    this.#firstPage ??= this.#fetchPage().then((envelope) => new Page(envelope, this.#fetchPage));
+  /**
+   * Fetch (once) and wrap the first page as an {@link APIPromise} so `await` yields the
+   * `Page` and `.asResponse()`/`.withResponse()` expose the underlying response. Lazy +
+   * memoized: the first consumption fetches; later consumers reuse the same result.
+   */
+  #loadFirstPage(): APIPromise<Page<T>> {
+    this.#firstPage ??= APIPromise.fromParsed<Page<T>>(() => {
+      const pending = this.#fetchPage();
+      // Thread the real HTTP response when the resource hands back an APIPromise (the path
+      // resources take via `http.requestPage` — story 003+). A legacy plain-Promise fetch
+      // carries no response, so fall back to a minimal successful-list response.
+      const responsePromise: Promise<HttpResponse> =
+        pending instanceof APIPromise
+          ? pending.asResponse()
+          : Promise.resolve({ status: SUCCESS_LIST_STATUS, headers: {} });
+      const dataPromise = Promise.resolve<ListEnvelope<T>>(pending).then(
+        (envelope) => new Page(envelope, this.#fetchPage),
+      );
+      return Promise.all([dataPromise, responsePromise]).then(([data, response]) => ({
+        data,
+        response,
+      }));
+    });
     return this.#firstPage;
   }
 
-  // ── Promise<Page<T>> surface (delegated to the memoized first-page promise) ──
+  // ── Promise<Page<T>> surface (delegated to the composed first-page APIPromise) ──
 
   then<TResult1 = Page<T>, TResult2 = never>(
     onfulfilled?: ((value: Page<T>) => TResult1 | PromiseLike<TResult1>) | undefined | null,
@@ -158,6 +193,18 @@ export class PagePromise<T extends HasId> implements Promise<Page<T>>, AsyncIter
 
   get [Symbol.toStringTag](): string {
     return 'PagePromise';
+  }
+
+  // ── APIPromise dual surface (D15) — the first page's HTTP response ──
+
+  /** The HTTP response of the first-page fetch (status + headers). */
+  asResponse(): Promise<HttpResponse> {
+    return this.#loadFirstPage().asResponse();
+  }
+
+  /** The first {@link Page} together with its HTTP response. */
+  withResponse(): Promise<APIResponse<Page<T>>> {
+    return this.#loadFirstPage().withResponse();
   }
 
   // ── AsyncIterable<T> surface (await the first page, then auto-paginate) ──

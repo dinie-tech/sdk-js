@@ -21,6 +21,11 @@ export { Webhooks } from './runtime/index.js';
 // Pagination — `Page`/`PagePromise` are public surface (`list()` returns a `PagePromise`).
 export { Page, PagePromise } from './runtime/index.js';
 
+// APIPromise — dual-natured return of every non-list method (D15): `await` for the parsed
+// body, or `.asResponse()`/`.withResponse()` for the underlying HTTP response.
+export { APIPromise } from './runtime/index.js';
+export type { APIResponse, HttpResponse } from './runtime/index.js';
+
 // Error MECHANISM — the base hierarchy + the client-side errors (no server response to
 // describe). The server-response catalog is part of the generated surface above.
 export {

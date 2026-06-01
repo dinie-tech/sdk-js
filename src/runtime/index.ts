@@ -44,3 +44,9 @@ export type { DinieConfig, RequestOptions } from './http.js';
 // `PagePromise`; §6). The `FetchPage`/`HasId` contract is runtime-internal: the
 // generated resource imports it directly from `./paginator.js` to build a `PagePromise`.
 export { Page, PagePromise } from './paginator.js';
+
+// APIPromise — the dual-natured return of every non-list method (D15): `await` for the body,
+// `.asResponse()`/`.withResponse()` for the HTTP response. Public surface. The `RawResponse`
+// transport seam stays runtime-internal (consumed by `http.ts`), so it is NOT re-exported.
+export { APIPromise } from './api-promise.js';
+export type { APIResponse, HttpResponse } from './api-promise.js';

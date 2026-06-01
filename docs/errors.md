@@ -98,8 +98,11 @@ try {
 }
 ```
 
-`parseRetryAfter(retryAfter?: string): number | null` aceita as duas formas do RFC 7231
-(delta-seconds ou HTTP-date) e retorna milissegundos (ou `null` quando ausente/inválido).
+`parseRetryAfter(retryAfter?: string | string[]): number | null` aceita as duas formas do
+RFC 7231 (delta-seconds ou HTTP-date) e retorna milissegundos (ou `null` quando
+ausente/inválido). A assinatura aceita `string | string[]` (D11): `err.headers['retry-after']`
+tem tipo `string | string[] | undefined`, então o exemplo acima **type-checa em strict sem
+cast** (um header repetido usa o primeiro valor).
 
 ### Exemplo — verificação de webhook
 
@@ -144,5 +147,13 @@ A descrição de cada erro (causas, códigos, remediação) está no catálogo �
 **[https://docs.dinie.com/errors/](https://docs.dinie.com/errors/)** e em `dinie-tech/api-docs`.
 Este doc não a duplica.
 
-> **V0.1:** 503 dobra em `ServerError` (sem `ServiceUnavailableError`) e idempotency-key
-> reuse dobra em `ValidationError` (sem classe separada). A confirmar no freeze da V0.2.
+> **V0.2 (freeze confirmado):** `503` dobra em `ServerError` (vacuamente — o contrato não tem
+> `503`; o fallback `status ≥ 500 → ServerError` cobre `502`/`504` e qualquer `503` futuro).
+> `410 Gone` (sem `type` URL) cai num `APIStatusError` genérico com `code`/`request_id` — sem
+> classe nova. Idempotency-key reuse não tem classe dedicada; o servidor escolhe o status
+> (`409`/`422`) e o parceiro discrimina por `err.code`.
+>
+> **Idempotência:** todo request non-GET envia o header **`X-Idempotency-Key`** (auto
+> `dinie-sdk-retry-<uuid>`, estável entre retries — R4/D9). Override por chamada via
+> `options.idempotencyKey`; opt-out global via `new Dinie({ idempotency: false })` (foot-gun
+> documentado). O log redige `access_token`/`phone` além de `cpf`/`cnpj`/`secret`/… (§5.4).

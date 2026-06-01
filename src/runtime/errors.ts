@@ -247,6 +247,11 @@ export function registerErrorStatus(status: number, ctor: APIStatusErrorCtor): v
  * Last resort when neither the `type` URL nor the exact status is registered: route any
  * 5xx to whatever class owns 500 (the catalog's `ServerError`), else a generic
  * `APIStatusError`. Keeps the pre-refactor behavior without naming a generated class.
+ *
+ * V0.2 freeze (§5.1/§6.2): this is what folds the body-less gateway errors `502`/`504`
+ * (and any future `503`) into `ServerError`, and routes `410 Gone` (no openapi `type` URL)
+ * to a generic `APIStatusError` carrying `code`/`request_id`. No new error classes — the
+ * status fallback covers them by design.
  */
 function fallbackCtor(status: number): APIStatusErrorCtor {
   if (status >= 500) return statusRegistry.get(500) ?? APIStatusError;

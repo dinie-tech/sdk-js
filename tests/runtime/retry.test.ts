@@ -1,3 +1,4 @@
+import { RateLimitError } from '../../src/generated/errors/index.js';
 import {
   RETRYABLE_STATUS,
   isRetryableNetworkError,
@@ -6,22 +7,29 @@ import {
   shouldRetry,
 } from '../../src/runtime/retry.js';
 
-describe('shouldRetry — V0.1 retryable status set (D5)', () => {
-  it('retries exactly 429/502/503/504', () => {
-    for (const status of [429, 502, 503, 504]) {
+describe('shouldRetry — V0.2 reconciled retryable status set (D8)', () => {
+  it('retries exactly 408/429/500/502/503/504', () => {
+    for (const status of [408, 429, 500, 502, 503, 504]) {
       expect(shouldRetry(status)).toBe(true);
     }
   });
 
-  it('does NOT retry semantic 4xx (400/403/404/409/422)', () => {
-    for (const status of [400, 403, 404, 409, 422]) {
+  it('retries 408 and 500, added in the V0.2 reconciliation (D8)', () => {
+    // 500 is safe to retry on a non-GET because the stable X-Idempotency-Key (D9) means a
+    // retry never creates a duplicate resource.
+    expect(shouldRetry(408)).toBe(true);
+    expect(shouldRetry(500)).toBe(true);
+  });
+
+  it('does NOT retry semantic 4xx (400/403/404/409/410/422)', () => {
+    for (const status of [400, 403, 404, 409, 410, 422]) {
       expect(shouldRetry(status)).toBe(false);
     }
   });
 
-  it('does NOT retry 500 or 408 (V0.1 diverges from runtime-patterns ≥500 — D5)', () => {
-    expect(shouldRetry(500)).toBe(false);
-    expect(shouldRetry(408)).toBe(false);
+  it('does NOT retry 409 (conflict) or 410 (gone) — D8', () => {
+    expect(shouldRetry(409)).toBe(false);
+    expect(shouldRetry(410)).toBe(false);
   });
 
   it('does NOT retry success or 401 (401 is the http.ts one-shot, not a backoff retry)', () => {
@@ -30,10 +38,10 @@ describe('shouldRetry — V0.1 retryable status set (D5)', () => {
     expect(shouldRetry(401)).toBe(false);
   });
 
-  it('exposes the set as exactly {429, 502, 503, 504}', () => {
-    expect([...RETRYABLE_STATUS].sort((a, b) => a - b)).toEqual([429, 502, 503, 504]);
-    expect(RETRYABLE_STATUS.has(500)).toBe(false);
-    expect(RETRYABLE_STATUS.has(408)).toBe(false);
+  it('exposes the set as exactly {408, 429, 500, 502, 503, 504}', () => {
+    expect([...RETRYABLE_STATUS].sort((a, b) => a - b)).toEqual([408, 429, 500, 502, 503, 504]);
+    expect(RETRYABLE_STATUS.has(409)).toBe(false);
+    expect(RETRYABLE_STATUS.has(410)).toBe(false);
   });
 });
 
@@ -224,5 +232,28 @@ describe('parseRetryAfter', () => {
     expect(parseRetryAfter('')).toBeNull();
     expect(parseRetryAfter('   ')).toBeNull();
     expect(parseRetryAfter('whenever')).toBeNull();
+  });
+
+  // ── D11: widened to `string | string[]` so a repeated header type-checks in strict ──
+
+  it('accepts a string[] (repeated header) and uses the first element', () => {
+    expect(parseRetryAfter(['30', '60'])).toBe(30_000);
+    expect(parseRetryAfter(['0.5'])).toBe(500);
+  });
+
+  it('returns null for an empty array or a blank first element', () => {
+    expect(parseRetryAfter([])).toBeNull();
+    expect(parseRetryAfter(['   '])).toBeNull();
+  });
+
+  it("type-checks the JSDoc example `parseRetryAfter(err.headers['retry-after'])` in strict (D11)", () => {
+    // `err.headers` is `ResponseHeaders` (string | string[] | undefined per key); the widened
+    // signature accepts the value with NO cast — closing the V0.1 story-012 surprise.
+    const err = new RateLimitError(429, null, { 'retry-after': ['12', '34'] }, null);
+    const waitMs = parseRetryAfter(err.headers['retry-after']);
+    expect(waitMs).toBe(12_000);
+
+    const none = new RateLimitError(429, null, {}, null);
+    expect(parseRetryAfter(none.headers['retry-after'])).toBeNull();
   });
 });
