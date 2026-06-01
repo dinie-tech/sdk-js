@@ -23,7 +23,15 @@ export type {
   CustomerBankAccountKind,
   CustomerBankAccountRequest,
 } from './types/bank-account.js';
+export type { Bank } from './types/bank.js';
 export type { BiometricsSession, CreateBiometricsSessionParams } from './types/biometrics.js';
+export type {
+  CreateCredentialRequest,
+  Credential,
+  CredentialsListParams,
+  CredentialStatus,
+  CredentialWithSecret,
+} from './types/credential.js';
 export type {
   CreditOffer,
   CreditOffersListParams,
@@ -103,3 +111,13 @@ export type {
 export type { Money } from './types/money.js';
 export type { CreateSimulationRequest, Simulation } from './types/simulation.js';
 export type { Transaction, TransactionStatus, TransactionType } from './types/transaction.js';
+export type {
+  CreateWebhookEndpointRequest,
+  RotateWebhookSecretParams,
+  UpdateWebhookEndpointRequest,
+  WebhookEndpoint,
+  WebhookEndpointsListParams,
+  WebhookEndpointStatus,
+  WebhookEndpointWithSecret,
+  WebhookSecretRotation,
+} from './types/webhook-endpoint.js';

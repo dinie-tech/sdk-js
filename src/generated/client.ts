@@ -22,9 +22,12 @@ import { DinieError } from '../runtime/errors.js';
 import { HttpClient, type DinieConfig } from '../runtime/http.js';
 import type { RateLimit } from '../runtime/rate-limit.js';
 
+import { Banks } from './resources/banks.js';
+import { Credentials } from './resources/credentials.js';
 import { CreditOffers } from './resources/credit-offers.js';
 import { Customers } from './resources/customers.js';
 import { Loans } from './resources/loans.js';
+import { WebhookEndpoints } from './resources/webhook-endpoints.js';
 
 /**
  * The Dinie API client. Construct once and reuse — it owns a connection pool and an
@@ -35,6 +38,12 @@ import { Loans } from './resources/loans.js';
  * const customer = await client.customers.create({ email, phone, cpf, cnpj });
  */
 export class Dinie {
+  /** The banks resource — list the bank directory (flat, non-paginated). */
+  readonly banks: Banks;
+
+  /** The credentials resource — create/list/revoke API keys (create returns the one-time secret). */
+  readonly credentials: Credentials;
+
   /** The credit-offers resource — list/get offers + createSimulation (no create — R10). */
   readonly creditOffers: CreditOffers;
 
@@ -43,6 +52,9 @@ export class Dinie {
 
   /** The loans resource — create/get loans + listTransactions. */
   readonly loans: Loans;
+
+  /** The webhook-endpoints resource — create/list/get/update/delete/rotateSecret (REST management). */
+  readonly webhookEndpoints: WebhookEndpoints;
 
   readonly #http: HttpClient;
 
@@ -77,9 +89,12 @@ export class Dinie {
       ...(baseUrl !== undefined ? { baseUrl } : {}),
     };
     this.#http = new HttpClient(resolvedConfig);
+    this.banks = new Banks(this.#http);
+    this.credentials = new Credentials(this.#http);
     this.creditOffers = new CreditOffers(this.#http);
     this.customers = new Customers(this.#http);
     this.loans = new Loans(this.#http);
+    this.webhookEndpoints = new WebhookEndpoints(this.#http);
   }
 
   /** Latest rate-limit snapshot from the most recent response; `null` before the first call. */
