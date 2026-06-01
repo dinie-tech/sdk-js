@@ -20,7 +20,8 @@ DinieError (extends Error)
 │   └── APIStatusError            — a API respondeu não-2xx (catálogo server-response)
 └── OAuthError                    — client-side (fluxo OAuth)
     WebhookSignatureError         — client-side (verificação de webhook)
-    WebhookTimestampError
+    WebhookTimestampError         — client-side (verificação de webhook)
+    UnknownWebhookEventError      — client-side (evento verificado, `type` fora do catálogo)
 ```
 
 - **`DinieError`** — raiz de toda exceção do SDK.
@@ -31,21 +32,26 @@ DinieError (extends Error)
 
 ## Erros client-side
 
-Os 5 erros abaixo **não têm resposta do servidor** — descrevem falhas locais do SDK.
+Os 6 erros abaixo **não têm resposta do servidor** — descrevem falhas locais do SDK.
 
-| Erro                    | Estende              | Disparado quando                                                                                                      |
-| ----------------------- | -------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `APIConnectionError`    | `APIError`           | A requisição nunca produziu resposta: falha de DNS, socket reset, ou cancelamento pelo caller.                        |
-| `APITimeoutError`       | `APIConnectionError` | A requisição excedeu o `timeout` (default 30s) e o orçamento de retry se esgotou.                                     |
-| `OAuthError`            | `DinieError`         | Aquisição/refresh do token OAuth2 client-credentials falhou.                                                          |
-| `WebhookSignatureError` | `DinieError`         | Nenhuma assinatura no header bateu (payload adulterado), header obrigatório ausente, ou secret não fornecido.         |
-| `WebhookTimestampError` | `DinieError`         | O `webhook-timestamp` está ausente, malformado, ou fora da janela de tolerância (velho **ou** futuro — replay guard). |
+| Erro                       | Estende              | Disparado quando                                                                                                      |
+| -------------------------- | -------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `APIConnectionError`       | `APIError`           | A requisição nunca produziu resposta: falha de DNS, socket reset, ou cancelamento pelo caller.                        |
+| `APITimeoutError`          | `APIConnectionError` | A requisição excedeu o `timeout` (default 30s) e o orçamento de retry se esgotou.                                     |
+| `OAuthError`               | `DinieError`         | Aquisição/refresh do token OAuth2 client-credentials falhou.                                                          |
+| `WebhookSignatureError`    | `DinieError`         | Nenhuma assinatura no header bateu (payload adulterado), header obrigatório ausente, ou secret não fornecido.         |
+| `WebhookTimestampError`    | `DinieError`         | O `webhook-timestamp` está ausente, malformado, ou fora da janela de tolerância (velho **ou** futuro — replay guard). |
+| `UnknownWebhookEventError` | `DinieError`         | A assinatura do webhook **verificou**, mas o `type` do payload não está no catálogo do openapi (`generated/events`).  |
 
 ### Atributos
 
 - `APIConnectionError` / `APITimeoutError`: `message`, `cause` (o erro de transporte
   subjacente, quando houver).
 - `OAuthError` / `WebhookSignatureError` / `WebhookTimestampError`: `message`.
+- `UnknownWebhookEventError`: `message` + `eventType` (o `type` desconhecido, preservado do
+  payload verificado). **Lançar** — em vez de devolver um evento não-tipado — é deliberado:
+  um `type` novo é uma mudança de contrato, e o erro força a atualização do SDK a partir do
+  openapi antes de processar o payload (story 007 / OQ#2).
 
 ### Exemplo — chamadas de API
 
@@ -59,7 +65,7 @@ import {
 } from '@dinie/sdk';
 
 try {
-  await client.customers.create({ taxId, name });
+  await client.customers.create({ cpf, cnpj, email, phone });
 } catch (err) {
   if (err instanceof APITimeoutError) {
     // Timeout (já houve backoff/retry) — trate como falha transitória.
@@ -87,7 +93,7 @@ usuário, agendar seu próprio backoff), use o helper público `parseRetryAfter`
 import { parseRetryAfter, RateLimitError } from '@dinie/sdk';
 
 try {
-  await client.customers.create({ taxId, name });
+  await client.customers.create({ cpf, cnpj, email, phone });
 } catch (err) {
   if (err instanceof RateLimitError) {
     const waitMs = parseRetryAfter(err.headers['retry-after']); // ms, ou null se ausente
@@ -107,7 +113,12 @@ cast** (um header repetido usa o primeiro valor).
 ### Exemplo — verificação de webhook
 
 ```typescript
-import { Webhooks, WebhookSignatureError, WebhookTimestampError } from '@dinie/sdk';
+import {
+  Webhooks,
+  WebhookSignatureError,
+  WebhookTimestampError,
+  UnknownWebhookEventError,
+} from '@dinie/sdk';
 
 try {
   const event = Webhooks.extract({ headers: req.headers, body: req.rawBody, secret });
@@ -117,6 +128,8 @@ try {
     // Timestamp fora da janela — possível replay ou clock skew.
   } else if (err instanceof WebhookSignatureError) {
     // Assinatura inválida — NUNCA processe o payload.
+  } else if (err instanceof UnknownWebhookEventError) {
+    // Assinatura OK, mas `type` fora do catálogo (err.eventType) — atualize o SDK do contrato.
   }
 }
 ```
