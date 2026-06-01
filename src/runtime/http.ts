@@ -10,7 +10,7 @@
  *   2. obtain a Bearer token from the `TokenManager` (lazy + concurrency-safe — D6);
  *   3. assemble headers (auth, telemetry, idempotency, retry-count, content-type);
  *   4. dispatch through the injected `Dispatcher`;
- *   5. fold rate-limit headers into the tracker `client.rate_limit` reads (story 009);
+ *   5. fold rate-limit headers into the tracker `client.rateLimit` reads (story 009);
  *   6. on success, parse and return the typed body;
  *   7. on 401, run the one-shot re-auth (`invalidate()` + fresh token), then give up
  *      with `AuthError` if a second 401 follows (D6 — no loop);
@@ -221,7 +221,7 @@ export class HttpClient {
     this.#rateLimit = new RateLimitTracker();
   }
 
-  /** Latest rate-limit snapshot (read by `client.rate_limit`); `null` before the first response. */
+  /** Latest rate-limit snapshot (read by `client.rateLimit`); `null` before the first response. */
   get rateLimit(): RateLimit | null {
     return this.#rateLimit.snapshot;
   }
@@ -304,7 +304,13 @@ export class HttpClient {
           method: req.method,
           headers,
           signal: abort.signal,
-          ...(serialized !== undefined ? { body: serialized.body } : {}),
+          // undici frames FormData/Blob/streams/Buffer at runtime; its published `Dispatcher` body
+          // type predates Blob/ReadableStream, so widen to it here — the runtime support is real
+          // (see `serializeBody` + undici's `Request` body handling). `Exclude<…, undefined>` keeps
+          // the cast honest under exactOptionalPropertyTypes (the body is always present here).
+          ...(serialized !== undefined
+            ? { body: serialized.body as Exclude<Dispatcher.DispatchOptions['body'], undefined> }
+            : {}),
         });
       } catch (err) {
         // Caller cancellation (their own signal) is never retried — surface it.
@@ -444,11 +450,46 @@ function buildPath(path: string, query?: QueryParams): string {
   return `${path}${path.includes('?') ? '&' : '?'}${qs}`;
 }
 
-/** Serialize a request body to a string + its `Content-Type`, or `undefined` when absent. */
-function serializeBody(body: unknown): { body: string; contentType: string } | undefined {
+/**
+ * Body shapes undici frames natively — passed through WITHOUT JSON serialization so the
+ * transport sets the right framing: a `multipart/form-data` boundary for `FormData`, the blob's
+ * own media type for `Blob`, and raw bytes / a stream for `Buffer` / `ReadableStream`. KYC uploads
+ * (`kycUploadToFormData`) emit `FormData`; the rest are defensive so a binary body a caller hands
+ * in is never mangled into JSON. Node 18+ exposes all four as globals (no polyfill).
+ */
+type PassThroughBody = FormData | Blob | ReadableStream | Buffer;
+
+/** Outcome of {@link serializeBody}: the dispatched body + the `Content-Type` to send (if any). */
+interface SerializedBody {
+  /** The body handed to the dispatcher — a pass-through object or a JSON/text string. */
+  body: PassThroughBody | string;
+  /** `Content-Type` to set, or `undefined` to let the transport set it (the FormData boundary). */
+  contentType: string | undefined;
+}
+
+/** Media type for a typeless binary body (`Blob` without `.type`, `Buffer`, a stream). */
+const OCTET_STREAM = 'application/octet-stream';
+/** Media type for JSON / text bodies. */
+const JSON_CONTENT_TYPE = 'application/json';
+
+/**
+ * Serialize a request body for the transport. `FormData`/`Blob`/`ReadableStream`/`Buffer` pass
+ * through untouched (undici frames them — multipart boundary, blob media type, or raw bytes);
+ * a `string` is assumed already-serialized JSON (the V0.1 behavior); any other object/array is
+ * `JSON.stringify`d. `null`/`undefined` send no body. Returns `undefined` when there is no body.
+ *
+ * Exported for direct unit testing (mirrors `rate-limit.ts`/`retry.ts`); NOT re-exported from the
+ * runtime barrel, so it is not part of the public SDK surface.
+ */
+export function serializeBody(body: unknown): SerializedBody | undefined {
   if (body === undefined || body === null) return undefined;
-  if (typeof body === 'string') return { body, contentType: 'application/json' };
-  return { body: JSON.stringify(body), contentType: 'application/json' };
+  // Pass-through: never JSON.stringify a binary/multipart body.
+  if (body instanceof FormData) return { body, contentType: undefined }; // undici sets the boundary
+  if (body instanceof Blob) return { body, contentType: body.type || OCTET_STREAM };
+  if (body instanceof ReadableStream) return { body, contentType: OCTET_STREAM };
+  if (Buffer.isBuffer(body)) return { body, contentType: OCTET_STREAM };
+  if (typeof body === 'string') return { body, contentType: JSON_CONTENT_TYPE };
+  return { body: JSON.stringify(body), contentType: JSON_CONTENT_TYPE };
 }
 
 /** Read + parse a successful response body to `T` (JSON, or raw text fallback). */

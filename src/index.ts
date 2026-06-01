@@ -21,8 +21,10 @@ export { Webhooks } from './runtime/index.js';
 // Pagination — `Page`/`PagePromise` are public surface (`list()` returns a `PagePromise`).
 export { Page, PagePromise } from './runtime/index.js';
 
-// APIPromise — dual-natured return of every non-list method (D15): `await` for the parsed
-// body, or `.asResponse()`/`.withResponse()` for the underlying HTTP response.
+// APIPromise — the runtime's dual-natured transport return (`await` for the parsed body, or
+// `.asResponse()`/`.withResponse()` for the HTTP response). It backs `PagePromise` (the dual on
+// `list*`); non-list methods return a plain `Promise<T>` (D15 — status quo ratified). Exported as
+// a forward-compat seam: widening a non-list method to the dual is a mechanical `_thenUnwrap`.
 export { APIPromise } from './runtime/index.js';
 export type { APIResponse, HttpResponse } from './runtime/index.js';
 

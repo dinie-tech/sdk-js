@@ -3,7 +3,7 @@
  *
  * Reads the `X-RateLimit-Limit` / `X-RateLimit-Remaining` / `X-RateLimit-Reset`
  * headers off the *last* response and exposes them as a `RateLimit` snapshot, which
- * `http.ts` keeps current and `client.rate_limit` reads (story 009).
+ * `http.ts` keeps current and `client.rateLimit` reads (story 009).
  *
  * Two pieces:
  *   - `parseRateLimit(headers)` — pure function: headers → `RateLimit | null`.
@@ -25,7 +25,7 @@ type RateLimitHeaders = Record<string, string | string[] | undefined>;
 
 /**
  * Parsed rate-limit state from the most recent response (architecture §4.1).
- * Surfaced as `client.rate_limit` (snake_case on the public surface — D4, provisional).
+ * Surfaced as `client.rateLimit` (camelCase on the public surface — D12 ratified).
  */
 export interface RateLimit {
   /** Ceiling for the current window (`X-RateLimit-Limit`). */
@@ -62,7 +62,7 @@ export function parseRateLimit(headers: RateLimitHeaders): RateLimit | null {
 
 /**
  * Mutable holder of the latest `RateLimit`. `http.ts` calls `update(headers)` after
- * every response; `client.rate_limit` reads `snapshot`. `null` until the first
+ * every response; `client.rateLimit` reads `snapshot`. `null` until the first
  * response that carries valid rate-limit headers.
  */
 export class RateLimitTracker {

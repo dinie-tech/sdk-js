@@ -1,17 +1,17 @@
 /**
- * `APIPromise<T>` — the dual-natured return value of every non-list method (D15).
- *
- * A method like `customers.get(id)` returns an `APIPromise<Customer>`: it is a
- * `PromiseLike<T>` (so `await client.customers.get(id)` yields the `Customer`), and it
- * ALSO exposes the underlying HTTP response without a second round-trip:
+ * `APIPromise<T>` — the runtime's dual-natured transport return (D15). It is a
+ * `PromiseLike<T>` (so `await` yields the parsed body `T`) that ALSO exposes the underlying
+ * HTTP response without a second round-trip:
  *
  *   - `await p`                → `T` (the parsed, camelCase body)
  *   - `await p.asResponse()`   → `HttpResponse` (status + headers, no body re-read)
  *   - `await p.withResponse()` → `{ data: T, response: HttpResponse }`
  *
- * V0.1 only had this dual nature on `list()` (via `PagePromise`). V0.2 generalizes the
- * pattern here so EVERY method has a consistent `.withResponse()`/`.asResponse()` surface
- * (architecture §7.6, D15); `paginator.ts` composes this module for the same reason.
+ * `HttpClient.request<T>()` returns this; the public dual surface is exposed on `list*` via
+ * `PagePromise` (which composes this module). Non-list methods return a plain `Promise<T>`
+ * (D15 — status quo ratified at V0.2 sign-off; see `adapters/typescript.md`): widening one to
+ * the dual is a mechanical `_thenUnwrap` (architecture §7.6), kept available but not used on
+ * the public surface today.
  *
  * ── Deferred execution + single body read ──
  * The transport request is in flight by the time an `APIPromise` is constructed (the

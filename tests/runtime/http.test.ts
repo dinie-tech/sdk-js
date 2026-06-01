@@ -18,7 +18,7 @@ import {
   ServerError,
   ValidationError,
 } from '../../src/generated/errors/index.js';
-import { HttpClient, type InternalRequest } from '../../src/runtime/http.js';
+import { HttpClient, serializeBody, type InternalRequest } from '../../src/runtime/http.js';
 import { useMockUndici } from '../_helpers/mock-undici.js';
 
 const mock = useMockUndici();
@@ -523,5 +523,85 @@ describe('HttpClient — APIPromise dual nature (D15)', () => {
     // parse is memoized (read exactly once).
     expect(data).toEqual({ id: 'cus_1', n: 1 });
     expect(withResp.data).toEqual(data);
+  });
+});
+
+describe('serializeBody — request body framing (multipart pass-through)', () => {
+  it('passes a FormData body through untouched and leaves Content-Type to the transport', () => {
+    const fd = new FormData();
+    fd.append('evidence_type', 'selfie');
+
+    const result = serializeBody(fd);
+
+    // The FormData object itself is dispatched (never JSON.stringify'd), and Content-Type is left
+    // unset so undici emits `multipart/form-data; boundary=…` with the boundary it computes.
+    expect(result?.body).toBe(fd);
+    expect(result?.contentType).toBeUndefined();
+  });
+
+  it('passes Blob, Buffer and ReadableStream through as binary bodies with a Content-Type', () => {
+    // A typed Blob carries its own media type.
+    const png = new Blob([new Uint8Array([1, 2, 3])], { type: 'image/png' });
+    expect(serializeBody(png)).toEqual({ body: png, contentType: 'image/png' });
+
+    // A typeless Blob falls back to octet-stream.
+    const typeless = new Blob([new Uint8Array([1])]);
+    expect(serializeBody(typeless)).toEqual({
+      body: typeless,
+      contentType: 'application/octet-stream',
+    });
+
+    const buf = Buffer.from('binary');
+    expect(serializeBody(buf)).toEqual({ body: buf, contentType: 'application/octet-stream' });
+
+    const stream = new ReadableStream();
+    expect(serializeBody(stream)).toEqual({
+      body: stream,
+      contentType: 'application/octet-stream',
+    });
+  });
+
+  it('JSON-serializes plain objects, passes strings through, and sends no body for null/undefined', () => {
+    // An object is serialized to JSON (the V0.1 behavior, preserved).
+    expect(serializeBody({ taxId: '123', name: 'Acme' })).toEqual({
+      body: '{"taxId":"123","name":"Acme"}',
+      contentType: 'application/json',
+    });
+    // A string is assumed already-serialized JSON and passes through verbatim.
+    expect(serializeBody('{"a":1}')).toEqual({ body: '{"a":1}', contentType: 'application/json' });
+    // No body → nothing dispatched.
+    expect(serializeBody(null)).toBeUndefined();
+    expect(serializeBody(undefined)).toBeUndefined();
+  });
+});
+
+describe('HttpClient — multipart pass-through (KYC uploads reach the wire unserialized)', () => {
+  it('dispatches a FormData body without stringifying it or setting Content-Type', async () => {
+    mock.mockToken();
+    const fd = new FormData();
+    fd.append('evidence_type', 'selfie');
+    fd.append('file', new Blob([new Uint8Array([1, 2, 3])]));
+    const ep = mock.mockEndpoint({
+      method: 'POST',
+      path: '/customers/cus_1/kyc-attachments',
+      responses: { statusCode: 201, body: { id: 'ka_1' } },
+    });
+
+    await makeClient().request<unknown>({
+      method: 'POST',
+      path: '/customers/cus_1/kyc-attachments',
+      body: fd,
+      idempotent: true,
+    });
+
+    // The FormData object reached the dispatcher as-is. The old JSON-only runtime would have
+    // produced `{}` (FormData has no enumerable fields); the harness coerces the captured body via
+    // String(), so a passed-through FormData surfaces as `[object FormData]` — proof it was framed
+    // by undici, not serialized to JSON.
+    expect(ep.lastRequest?.body).toBe('[object FormData]');
+    // The SDK set no Content-Type; undici frames the multipart boundary itself.
+    expect(ep.lastRequest?.headers['content-type']).toBeUndefined();
+    // Pass-through does not bypass the lifecycle: the write still carries its auto Idempotency-Key (D9).
+    expect(ep.lastRequest?.headers['x-idempotency-key']).toMatch(/^dinie-sdk-retry-/);
   });
 });
