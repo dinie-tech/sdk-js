@@ -63,6 +63,11 @@
 
 import type { CreditOfferStatus } from './credit-offer.js';
 import type { CustomerId } from './ids.js';
+import {
+  deserializeKycRequirement,
+  type KycRequirement,
+  type KycRequirementWire,
+} from './kyc/index.js';
 
 /** Customer lifecycle status (openapi enum). */
 export type CustomerStatus = 'creating' | 'pending_kyc' | 'under_review' | 'active' | 'denied';
@@ -88,12 +93,12 @@ export interface Customer {
   /** Lifecycle status. */
   status: CustomerStatus;
   /**
-   * KYC requirements. Omitted during `creating`; present from `pending_kyc` onward. Typed
-   * `unknown[]` HERE to keep this file free of the KYC discriminated unions — story 004
-   * refines it to `KycRequirement[]` (architecture §3.4 hotspot; story 002 open-question
-   * flag). The wire field is `kyc`.
+   * KYC requirements. Omitted during `creating`; present from `pending_kyc` onward. Each entry
+   * is a {@link KycRequirement} — the discriminated union over `requirement_type` (architecture
+   * §3.4 hotspot, defined in `./kyc/`). Refined from the story-002 placeholder `unknown[]` by
+   * story 004. The wire field is `kyc`.
    */
-  kyc?: unknown[];
+  kyc?: KycRequirement[];
   /** Creation instant, epoch seconds (R-EPOCH). Wire: `created_at`. */
   createdAt: number;
   /** Last-modified instant, epoch seconds (R-EPOCH). Wire: `updated_at`. */
@@ -111,7 +116,7 @@ export interface CustomerWire {
   cnpj: string | null;
   trading_name: string | null;
   status: CustomerStatus;
-  kyc?: unknown[];
+  kyc?: KycRequirementWire[];
   created_at: number;
   updated_at: number;
 }
@@ -185,8 +190,8 @@ export interface CustomerCreditOffersListParams {
 /**
  * Decode a wire customer (snake_case) into a {@link Customer} (camelCase). Explicit,
  * alphabetical, epoch-preserving — see the four rules in the module header. `kyc` is an
- * optional array (omitted during `creating`): copied through untouched when present (story
- * 004 will refine its element type).
+ * optional array (omitted during `creating`): each entry is run through
+ * {@link deserializeKycRequirement} (the discriminated dispatch — story 004) when present.
  */
 export function deserializeCustomer(raw: CustomerWire): Customer {
   return {
@@ -196,7 +201,7 @@ export function deserializeCustomer(raw: CustomerWire): Customer {
     email: raw.email,
     externalId: raw.external_id,
     id: raw.id,
-    ...(raw.kyc !== undefined ? { kyc: raw.kyc } : {}),
+    ...(raw.kyc !== undefined ? { kyc: raw.kyc.map(deserializeKycRequirement) } : {}),
     name: raw.name,
     phone: raw.phone,
     status: raw.status,

@@ -171,13 +171,32 @@ describe('deserializeCustomer — wire (snake) → Customer (camel), reconciled 
     expect(customer.tradingName).toBeNull();
   });
 
-  it('omits the optional kyc array when absent and carries it through when present', () => {
+  it('omits the optional kyc array when absent and deserializes each requirement when present', () => {
     expect('kyc' in deserializeCustomer(wireCustomer())).toBe(false);
 
     const reviewing = deserializeCustomer(
-      wireCustomer({ status: 'under_review', kyc: [{ requirement_type: 'identity' }] }),
+      wireCustomer({
+        status: 'under_review',
+        kyc: [
+          {
+            requirement_type: 'company_document',
+            requirement_id: 'company_document',
+            label: 'Documento da empresa',
+            mandatory: true,
+          },
+        ],
+      }),
     );
-    expect(reviewing.kyc).toEqual([{ requirement_type: 'identity' }]);
+    // Each wire requirement is run through the discriminated deserializer (story 004) —
+    // exhaustive per-variant coverage lives in tests/generated/kyc.test.ts.
+    expect(reviewing.kyc).toEqual([
+      {
+        label: 'Documento da empresa',
+        mandatory: true,
+        requirementId: 'company_document',
+        requirementType: 'company_document',
+      },
+    ]);
   });
 });
 

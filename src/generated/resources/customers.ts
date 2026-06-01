@@ -1,18 +1,20 @@
 /**
- * `Customers` resource — the full non-KYC surface (architecture §3.1, §6, §7.1).
+ * `Customers` resource — the full customers surface (architecture §3.1, §6, §7.1).
  * Hand-authored in V0.2 to mirror future generator output (D1); V0.4 overwrites it. V0.1
  * sketched `create`/`get`/`list`; story 002 re-wired those onto the generated (de)serializer
- * convention; story 003 expands to the 8 non-KYC methods. The KYC block
- * (`uploadKycAttachment`/`startKycReview` + `Kyc*` types) is story 004 (same file, sequential).
+ * convention; story 003 added the 8 non-KYC methods; story 004 adds the two KYC methods
+ * (`startKycReview`/`uploadKycAttachment`) over the `Kyc*` discriminated unions (`../types/kyc/`).
  *
- * ── The 8 non-KYC methods (alphabetical — minimal diff for the V0.4 generator) ──
+ * ── The 10 methods (alphabetical — minimal diff for the V0.4 generator) ──
  *   create                 POST   /v3/customers
  *   createBiometricsSession POST  /v3/customers/{id}/biometrics       (no request body)
  *   get                    GET    /v3/customers/{id}
  *   getBankAccount         GET    /v3/customers/{id}/bank-account
  *   list                   GET    /v3/customers                       → PagePromise
  *   listCreditOffers       GET    /v3/customers/{id}/credit-offers     → PagePromise
+ *   startKycReview         POST   /v3/customers/{id}/kyc-review        (202, no body → void)
  *   update                 PATCH  /v3/customers/{id}
+ *   uploadKycAttachment    POST   /v3/customers/{id}/kyc-attachments   (multipart — see runtime gap)
  *   upsertBankAccount      POST   /v3/customers/{id}/bank-account
  *
  * ── Method naming (§7.1 — strip the resource noun) ──
@@ -76,6 +78,14 @@ import {
   type CustomerWire,
   type UpdateCustomerRequest,
 } from '../types/customer.js';
+import {
+  deserializeKycAttachmentResponse,
+  kycUploadToFormData,
+  serializeKycUpload,
+  type KycAttachmentResponse,
+  type KycAttachmentResponseWire,
+  type KycUpload,
+} from '../types/kyc/index.js';
 
 /** Path of the customers collection. */
 const CUSTOMERS_PATH = '/v3/customers';
@@ -216,6 +226,25 @@ export class Customers {
   }
 
   /**
+   * Submit the customer's uploaded KYC documents for review. `POST /v3/customers/{id}/kyc-review`
+   * (idempotent). Signals that all documents are uploaded and ready for the verification
+   * pipeline; also re-submits after corrections.
+   *
+   * Returns `void`: the contract replies `202 Accepted` with NO body (openapi SoT @3fcfd83).
+   * The architecture §3.1 hinted at a possible `Customer` body, but the contract is
+   * authoritative (D2) — confirmed `202`/empty. The endpoint is `x-internal` in the openapi
+   * (driven by the KYC app flow) yet part of the frozen reference surface (architecture §3.1).
+   */
+  async startKycReview(id: string, options?: RequestOptions): Promise<void> {
+    await this.#http.request<void>({
+      method: 'POST',
+      path: `${customerPath(id)}/kyc-review`,
+      idempotent: true,
+      ...(options !== undefined ? { options } : {}),
+    });
+  }
+
+  /**
    * Update a customer's contact fields. `PATCH /v3/customers/{id}` (idempotent). Only the keys
    * the caller set are sent (PATCH semantics); the wire response is the full updated customer.
    */
@@ -232,6 +261,36 @@ export class Customers {
       ...(options !== undefined ? { options } : {}),
     });
     return deserializeCustomer(wire);
+  }
+
+  /**
+   * Upload a KYC attachment for a customer. `POST /v3/customers/{id}/kyc-attachments`
+   * (idempotent). `params` is the {@link KycUpload} discriminated union (10 document/data
+   * variants): `serializeKycUpload` dispatches on `evidenceType` to the correct multipart field
+   * set, and `kycUploadToFormData` frames it as `multipart/form-data`. Returns the post-upload
+   * {@link KycAttachmentResponse} (the full requirement state, deserialized via the discriminated
+   * `deserializeKycRequirement`).
+   *
+   * ⚠️ RUNTIME GAP (tracked, not fixed here): the frozen JSON-only runtime
+   * (`runtime/http.ts → serializeBody`) does not yet pass a `FormData` body through, so the
+   * multipart body is not wire-encoded this round (see `../types/kyc/uploads.ts`). The
+   * serialization (per-variant field map) is fully covered by the KYC tests + conformance
+   * (story 008), independent of transport; the single runtime follow-up makes uploads encode on
+   * the wire with no change to this method.
+   */
+  async uploadKycAttachment(
+    id: string,
+    params: KycUpload,
+    options?: RequestOptions,
+  ): Promise<KycAttachmentResponse> {
+    const wire = await this.#http.request<KycAttachmentResponseWire>({
+      method: 'POST',
+      path: `${customerPath(id)}/kyc-attachments`,
+      body: kycUploadToFormData(serializeKycUpload(params)),
+      idempotent: true,
+      ...(options !== undefined ? { options } : {}),
+    });
+    return deserializeKycAttachmentResponse(wire);
   }
 
   /**
