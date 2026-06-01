@@ -51,6 +51,26 @@ import type { Money } from './money.js';
 /** Credit-offer lifecycle status (openapi enum). */
 export type CreditOfferStatus = 'available' | 'accepted' | 'expired';
 
+/**
+ * Query params for `creditOffers.list` — the standalone, cross-customer listing
+ * (`GET /credit-offers`). Mirrors the openapi query: pagination (`limit`/`starting_after`) plus
+ * the optional `customer_id` and `status` filters. The architecture §3.1 summary table only
+ * lists `{limit?, startingAfter?, customerId?}`, but the contract (SoT — D2) also defines
+ * `status`, so the deterministic generator output (§7.5) includes it — the same enrichment
+ * `customers.listCreditOffers` (story 003) applied. Defined here (the resource's owning type
+ * module) so the `creditOffers` resource (story 005) consumes it without re-importing.
+ */
+export interface CreditOffersListParams {
+  /** Page size, 1..100. */
+  limit?: number;
+  /** Explicit cursor (the `id` of the last item of the previous page). Wire: `starting_after`. */
+  startingAfter?: string;
+  /** Filter by owning customer. Wire: `customer_id`. */
+  customerId?: CustomerId;
+  /** Filter by offer status. Wire: `status` (single word — passed through unchanged). */
+  status?: CreditOfferStatus;
+}
+
 /** A pre-approved credit offer for a customer (`co_…`) — read-only (R10). */
 export interface CreditOffer {
   /** Stable id, `co_…`. */

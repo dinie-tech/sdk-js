@@ -24,7 +24,11 @@ export type {
   CustomerBankAccountRequest,
 } from './types/bank-account.js';
 export type { BiometricsSession, CreateBiometricsSessionParams } from './types/biometrics.js';
-export type { CreditOffer, CreditOfferStatus } from './types/credit-offer.js';
+export type {
+  CreditOffer,
+  CreditOffersListParams,
+  CreditOfferStatus,
+} from './types/credit-offer.js';
 export type {
   CreateCustomerRequest,
   Customer,
@@ -90,4 +94,12 @@ export type {
   SelfieRequirement,
   SelfieSubmitted,
 } from './types/kyc/index.js';
+export type {
+  CreateLoanRequest,
+  Loan,
+  LoanStatus,
+  LoanTransactionsListParams,
+} from './types/loan.js';
 export type { Money } from './types/money.js';
+export type { CreateSimulationRequest, Simulation } from './types/simulation.js';
+export type { Transaction, TransactionStatus, TransactionType } from './types/transaction.js';
