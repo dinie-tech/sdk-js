@@ -223,6 +223,21 @@ export class CustomersKycAttachments {
     });
     return deserializeKycAttachmentResponse(wire);
   }
+
+  async uploadSelfie(
+    customerId: string,
+    params?: Record<string, unknown>,
+    options?: RequestOptions,
+  ): Promise<KycAttachmentResponse> {
+    const wire = await this.#http.request<KycAttachmentResponseWire>({
+      method: 'POST',
+      path: `${customerPath(customerId)}/kyc-attachments/selfie`,
+      body: params ?? {},
+      idempotent: true,
+      ...(options !== undefined ? { options } : {}),
+    });
+    return deserializeKycAttachmentResponse(wire);
+  }
 }
 
 function toCreditOfferPage(wire: ListEnvelope<CreditOfferWire>): ListEnvelope<CreditOffer> {

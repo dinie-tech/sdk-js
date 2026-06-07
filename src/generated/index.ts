@@ -42,6 +42,10 @@ export type {
   WebhookEventType,
 } from './events/index.js';
 export type { Bank } from './types/bank.js';
+export type {
+  BiometricsSessionExchangeResponse,
+  BiometricsSessionExchangeResponseTokenType,
+} from './types/biometrics-session-exchange-response.js';
 export type { BiometricsSession } from './types/biometrics-session.js';
 export type {
   CreateCredentialRequest,

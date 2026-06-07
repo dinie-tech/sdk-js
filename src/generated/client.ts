@@ -9,6 +9,7 @@ import { HttpClient, type DinieConfig } from '../runtime/http.js';
 import type { RateLimit } from '../runtime/rate-limit.js';
 
 import { Banks } from './resources/banks.js';
+import { Biometrics } from './resources/biometrics.js';
 import { Credentials } from './resources/credentials.js';
 import { CreditOffers } from './resources/credit-offers.js';
 import { Customers } from './resources/customers.js';
@@ -21,6 +22,7 @@ import { WebhookEndpoints } from './resources/webhook-endpoints.js';
  */
 export class Dinie {
   readonly banks: Banks;
+  readonly biometrics: Biometrics;
   readonly credentials: Credentials;
   readonly creditOffers: CreditOffers;
   readonly customers: Customers;
@@ -57,6 +59,7 @@ export class Dinie {
     };
     this.#http = new HttpClient(resolvedConfig);
     this.banks = new Banks(this.#http);
+    this.biometrics = new Biometrics(this.#http);
     this.credentials = new Credentials(this.#http);
     this.creditOffers = new CreditOffers(this.#http);
     this.customers = new Customers(this.#http);

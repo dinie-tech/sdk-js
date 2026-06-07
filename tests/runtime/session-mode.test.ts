@@ -13,7 +13,7 @@
  *   T9 — exchange never succeeded: 401/403 on step 2 propagates the typed `APIError`
  *        from `APIError.fromResponse`; `#exchanged` stays false; single-flight unlocks.
  *
- * The generated error catalog (AuthError/PermissionError) is imported here as a
+ * The generated error catalog (AuthError/PermissionDeniedError) is imported here as a
  * side-effect so the registry is populated and `APIError.fromResponse` dispatches
  * correctly to typed classes for the T9 assertions.
  */
@@ -21,7 +21,7 @@
 import { APIStatusError, OAuthError, SessionTokenExpiredError } from '../../src/runtime/errors.js';
 import { SESSION_EXCHANGE_PATH, TokenManager } from '../../src/runtime/token-manager.js';
 import { AuthError } from '../../src/generated/errors/auth-error.js';
-import { PermissionError } from '../../src/generated/errors/permission-error.js';
+import { PermissionDeniedError } from '../../src/generated/errors/permission-denied-error.js';
 import { useMockUndici } from '../_helpers/mock-undici.js';
 
 const CLIENT_ID = 'client-abc';
@@ -311,13 +311,13 @@ describe('T9 — exchange never succeeded: typed APIError propagates', () => {
     expect(err).toBeInstanceOf(AuthError);
   });
 
-  it('403 on step 2 → PermissionError (typed dispatch via APIError.fromResponse)', async () => {
+  it('403 on step 2 → PermissionDeniedError (typed dispatch via APIError.fromResponse)', async () => {
     mock.mockToken({ accessToken: 'cc-tok' });
     mock.mockExchange({ statusCode: 403 });
     const tm = makeSessionManager();
 
     const err = await tm.getAccessToken().catch((e: unknown) => e);
-    expect(err).toBeInstanceOf(PermissionError);
+    expect(err).toBeInstanceOf(PermissionDeniedError);
   });
 
   it('#exchanged stays false after a failed exchange (T9 ≠ T5)', async () => {

@@ -19,10 +19,10 @@
  * ── Coverage of the 8 server-response classes (§6.1) ──
  * Seven type URLs appear in the contract with examples → 7 classes covered: BadRequest(400),
  * Auth(401), NotFound(404), Conflict(409), Validation(422), RateLimit(429), Server(500). The 8th,
- * `PermissionError` (403 / `…/errors/forbidden`), is an ORPHAN: that type URL and any 403 are
+ * `PermissionDeniedError` (403 / `…/errors/forbidden`), is an ORPHAN: that type URL and any 403 are
  * ABSENT from the contract (tracked openapi PR **P1** — the SDK keeps the class as documented
  * debt, architecture §6.1/§6.4/§10). So it gets no example coverage here BY DESIGN; the gate
- * asserts exactly {8 classes} − {PermissionError} are covered, and flags P1 — it is not a regression.
+ * asserts exactly {8 classes} − {PermissionDeniedError} are covered, and flags P1 — it is not a regression.
  */
 
 import { loadExamples, type ExampleRecord } from './loader.js';
@@ -33,7 +33,7 @@ import {
   BadRequestError,
   ConflictError,
   NotFoundError,
-  PermissionError,
+  PermissionDeniedError,
   RateLimitError,
   ServerError,
   ValidationError,
@@ -54,7 +54,7 @@ type ErrorClass = typeof APIStatusError;
 const TYPE_URL_TO_CLASS: Record<string, ErrorClass> = {
   'https://docs.dinie.com/errors/invalid-request': BadRequestError,
   'https://docs.dinie.com/errors/authentication-failed': AuthError,
-  'https://docs.dinie.com/errors/forbidden': PermissionError,
+  'https://docs.dinie.com/errors/forbidden': PermissionDeniedError,
   'https://docs.dinie.com/errors/not-found': NotFoundError,
   'https://docs.dinie.com/errors/conflict': ConflictError,
   'https://docs.dinie.com/errors/validation-failed': ValidationError,
@@ -68,7 +68,7 @@ const EXPECTED_UNCOVERED: Record<string, string> = {};
 const ALL_CATALOG_CLASSES: Record<string, ErrorClass> = {
   BadRequestError,
   AuthError,
-  PermissionError,
+  PermissionDeniedError,
   NotFoundError,
   ConflictError,
   ValidationError,

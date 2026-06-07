@@ -12,7 +12,7 @@ import {
   BadRequestError,
   ConflictError,
   NotFoundError,
-  PermissionError,
+  PermissionDeniedError,
   RateLimitError,
   ServerError,
   ValidationError,
@@ -103,7 +103,7 @@ describe('APIError.fromResponse — dispatch by openapi `type` URL', () => {
   const cases: ReadonlyArray<[string, number, new (...a: never[]) => APIStatusError]> = [
     [`${ERRORS}/invalid-request`, 400, BadRequestError],
     [`${ERRORS}/authentication-failed`, 401, AuthError],
-    [`${ERRORS}/forbidden`, 403, PermissionError],
+    [`${ERRORS}/forbidden`, 403, PermissionDeniedError],
     [`${ERRORS}/not-found`, 404, NotFoundError],
     [`${ERRORS}/conflict`, 409, ConflictError],
     [`${ERRORS}/validation-failed`, 422, ValidationError],
@@ -144,7 +144,7 @@ describe('APIError.fromResponse — status fallback (registry-driven)', () => {
   const cases: ReadonlyArray<[number, new (...a: never[]) => APIStatusError]> = [
     [400, BadRequestError],
     [401, AuthError],
-    [403, PermissionError],
+    [403, PermissionDeniedError],
     [404, NotFoundError],
     [409, ConflictError],
     [422, ValidationError],
