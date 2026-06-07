@@ -13,7 +13,7 @@
  */
 
 import { Dinie } from '../../src/index.js';
-import type { CreditOffer } from '../../src/index.js';
+import type { CreditOffer, FixedInstallmentCreditOffer, RangeInstallmentCreditOffer } from '../../src/index.js';
 import { useMockUndici } from '../_helpers/mock-undici.js';
 
 const mock = useMockUndici();
@@ -132,6 +132,8 @@ describe('creditOffers.retrieve — round-trips a credit offer by id', () => {
     expect(offer.customerId).toBe('cust_1');
     expect(offer.approvedAmount).toBe(50000);
     expect(offer.externalId).toBe('ref-9');
+    // Wire has `installments: 12` → presence dispatch to FixedInstallmentCreditOffer (DS-IMPLICIT)
+    if (!('installments' in offer)) throw new Error('expected FixedInstallmentCreditOffer');
     expect(offer.installments).toBe(12);
     expect(offer.createdAt).toBe(1772791200);
   });
@@ -156,9 +158,10 @@ describe('creditOffers.retrieve — round-trips a credit offer by id', () => {
 
     const offer = await client.creditOffers.retrieve('co_range');
 
-    // The optional `installments` is omitted (not present), min/max are mapped.
-    expect(offer.installments).toBeUndefined();
+    // Wire has no `installments` → presence dispatch to RangeInstallmentCreditOffer (DS-IMPLICIT)
     expect('installments' in offer).toBe(false);
+    // Guard narrows `offer` to RangeInstallmentCreditOffer for min/max access
+    if ('installments' in offer) throw new Error('expected RangeInstallmentCreditOffer');
     expect(offer.minInstallments).toBe(3);
     expect(offer.maxInstallments).toBe(12);
   });

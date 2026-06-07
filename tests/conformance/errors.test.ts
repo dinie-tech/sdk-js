@@ -54,6 +54,7 @@ type ErrorClass = typeof APIStatusError;
 const TYPE_URL_TO_CLASS: Record<string, ErrorClass> = {
   'https://docs.dinie.com/errors/invalid-request': BadRequestError,
   'https://docs.dinie.com/errors/authentication-failed': AuthError,
+  'https://docs.dinie.com/errors/forbidden': PermissionError,
   'https://docs.dinie.com/errors/not-found': NotFoundError,
   'https://docs.dinie.com/errors/conflict': ConflictError,
   'https://docs.dinie.com/errors/validation-failed': ValidationError,
@@ -61,12 +62,8 @@ const TYPE_URL_TO_CLASS: Record<string, ErrorClass> = {
   'https://docs.dinie.com/errors/internal': ServerError,
 };
 
-/** The 8th catalog class is intentionally uncovered — orphan type URL, tracked PR P1. */
-const EXPECTED_UNCOVERED: Record<string, string> = {
-  PermissionError:
-    '403 / `…/errors/forbidden` is absent from the contract (orphan); SDK keeps the class as ' +
-    'documented debt — openapi PR P1 (architecture §6.1/§6.4/§10).',
-};
+/** All 8 catalog classes now have contract-backed type URLs (P1 resolved in api-docs@3218365). */
+const EXPECTED_UNCOVERED: Record<string, string> = {};
 
 const ALL_CATALOG_CLASSES: Record<string, ErrorClass> = {
   BadRequestError,
@@ -153,7 +150,7 @@ describe('conformance · problem+json → typed error class', () => {
 // ── Coverage gate ──────────────────────────────────────────────────────────────────────────────
 
 describe('conformance · errors coverage gate', () => {
-  it('every catalog class is covered by an example, except the documented orphan (P1)', () => {
+  it('every catalog class is covered by an example (all 8 now contract-backed — P1 resolved)', () => {
     const covered = new Set<string>();
     for (const [typeUrl, klass] of Object.entries(TYPE_URL_TO_CLASS)) {
       if (coveredTypeUrls.has(typeUrl)) covered.add(klass.name);
@@ -176,7 +173,7 @@ describe('conformance · errors coverage gate', () => {
     );
 
     expect(missing).toEqual([]);
-    // The orphan must genuinely have NO example (else the P1 note is stale).
-    expect(coveredTypeUrls.has('https://docs.dinie.com/errors/forbidden')).toBe(false);
+    // 403/forbidden is now contract-backed (api-docs@3218365 — P1 resolved). Must be covered.
+    expect(coveredTypeUrls.has('https://docs.dinie.com/errors/forbidden')).toBe(true);
   });
 });

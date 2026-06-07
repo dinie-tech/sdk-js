@@ -4,5 +4,8 @@
  * sdk-config.yml — do not edit by hand.
  */
 
-/** Monetary value in BRL. */
-export type Money = number;
+export interface CustomerCreditOffersListParams {
+  limit?: number;
+  startingAfter?: string;
+  status?: 'available' | 'accepted' | 'expired';
+}

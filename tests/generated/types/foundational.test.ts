@@ -38,6 +38,7 @@ import {
   deserializeCreditOffer,
   type CreditOfferWire,
 } from '../../../src/generated/types/credit-offer.js';
+import { type FixedInstallmentCreditOfferWire } from '../../../src/generated/types/credit-offer-base.js';
 
 describe('branded id prefixes — verbatim from the openapi `pattern` (architecture §3.2)', () => {
   // [label, pattern, a valid example, an invalid example]. The invalid example guards the
@@ -82,7 +83,7 @@ describe('branded id prefixes — verbatim from the openapi `pattern` (architect
     [
       'ApiClientId',
       API_CLIENT_ID_PATTERN,
-      'dinie_ci_550e8400e29b41d4a716446655440000',
+      'dinie_ci_live_550e8400e29b41d4a716446655440000',
       'ci_550e8400e29b41d4a716446655440000',
     ],
     [
@@ -295,7 +296,8 @@ describe('deserializeCreditOffer — wire (snake) → CreditOffer (camel), R10',
   });
 
   it('supports the range product (min/max installments, no fixed installments)', () => {
-    const { installments: _omit, ...rangeWire } = wireCreditOffer();
+    // Cast to Fixed to destructure `installments` — wire base shared by both variants
+    const { installments: _omit, ...rangeWire } = wireCreditOffer() as FixedInstallmentCreditOfferWire;
     const offer = deserializeCreditOffer({
       ...rangeWire,
       min_installments: 3,
@@ -303,6 +305,8 @@ describe('deserializeCreditOffer — wire (snake) → CreditOffer (camel), R10',
     });
 
     expect('installments' in offer).toBe(false);
+    // Guard narrows `offer` to RangeInstallmentCreditOffer for min/max access
+    if ('installments' in offer) throw new Error('expected RangeInstallmentCreditOffer');
     expect(offer.minInstallments).toBe(3);
     expect(offer.maxInstallments).toBe(12);
   });

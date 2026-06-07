@@ -18,7 +18,7 @@ import type {
   CustomerBankAccountRequest,
   CustomerCreatedData,
   CustomerCreatedEvent,
-  CustomerListParams,
+  CustomersListParams,
   PagePromise,
   RateLimit,
   RequestOptions,
@@ -41,7 +41,7 @@ async function _publicSurfaceTypeCheck(): Promise<void> {
     cpf: '123.456.789-00',
     cnpj: '12.345.678/0001-90',
   };
-  const listParams: CustomerListParams = { limit: 10 };
+  const listParams: CustomersListParams = { limit: 10 };
   const options: RequestOptions = {};
 
   const updateParams: UpdateCustomerRequest = { email: 'a@b.test' };

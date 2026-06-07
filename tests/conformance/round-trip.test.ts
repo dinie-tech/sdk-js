@@ -96,18 +96,17 @@ import { deserializeBank } from '../../src/generated/types/bank.js';
 import {
   deserializeCustomerBankAccount,
   serializeCustomerBankAccountRequest,
-} from '../../src/generated/types/bank-account.js';
-import { deserializeBiometricsSession } from '../../src/generated/types/biometrics.js';
+} from '../../src/generated/types/customer-bank-account-request.js';
+import { deserializeBiometricsSession } from '../../src/generated/types/biometrics-session.js';
 import {
   deserializeWebhookEndpoint,
   deserializeWebhookEndpointWithSecret,
-  deserializeWebhookSecretRotation,
   serializeCreateWebhookEndpointRequest,
   serializeUpdateWebhookEndpointRequest,
-  serializeRotateWebhookSecretParams,
 } from '../../src/generated/types/webhook-endpoint.js';
-import { deserializeKycRequirement } from '../../src/generated/types/kyc/requirements.js';
-import { deserializeKycAttachmentResponse } from '../../src/generated/types/kyc/attachment.js';
+import { deserializeWebhookSecretRotation } from '../../src/generated/types/webhook-secret-rotation.js';
+import { deserializeKycRequirement } from '../../src/generated/types/kyc.js';
+import { deserializeKycAttachmentResponse } from '../../src/generated/types/kyc-attachment-response.js';
 import { EVENT_DESERIALIZERS, type WebhookEventType } from '../../src/generated/events/index.js';
 
 // ── The oracle: snake→camel on KEYS only, recursive, value-preserving ───────────────────────────
@@ -179,9 +178,9 @@ const SERIALIZERS: Record<string, Serializer> = {
 };
 
 /** Inline (anonymous-schema) request bodies, mapped by `operationId` → serializer. */
-const ANON_REQUEST_BY_OP: Record<string, Serializer> = {
-  rotateWebhookSecret: serializeRotateWebhookSecretParams,
-};
+const ANON_REQUEST_BY_OP: Record<string, Serializer> = {};
+// rotateWebhookSecret: the inline body ({algorithm: string}) is passed through as-is in V0.5
+// (no type-specific serializer generated — body is Record<string,unknown>). Added to SKIP_ALLOWLIST.
 
 /**
  * application/json examples we deliberately do NOT round-trip, each with a reason (the coverage
@@ -191,6 +190,9 @@ const SKIP_ALLOWLIST: Record<string, string> = {
   TokenResponse:
     'Internal token endpoint — parsed by runtime/TokenManager (`createToken`), not a generated ' +
     '(de)serializer; not on the public SDK type surface (architecture §3.1, the one internal op).',
+  rotateWebhookSecret:
+    'Inline body ({algorithm: string}) — V0.5 generator emits no type-specific serializer for ' +
+    'this anonymous body (passed through as Record<string,unknown>); not a structural regression.',
 };
 
 // ── Build the case list at load time (deterministic, document order) ─────────────────────────────
@@ -304,8 +306,10 @@ for (const record of jsonRecords) {
   }
 
   // 6. Allowlisted (internal / off-surface) — recorded with a reason, not tested.
-  if (schemaName !== null && schemaName in SKIP_ALLOWLIST) {
-    skippedRecords.push({ record, reason: SKIP_ALLOWLIST[schemaName] as string });
+  // Check both schemaName (named schemas) and operationId (inline/anonymous bodies).
+  const skipKey = schemaName ?? operationId;
+  if (skipKey !== null && skipKey in SKIP_ALLOWLIST) {
+    skippedRecords.push({ record, reason: SKIP_ALLOWLIST[skipKey] as string });
     continue;
   }
 

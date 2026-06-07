@@ -4,5 +4,7 @@
  * sdk-config.yml — do not edit by hand.
  */
 
-/** Monetary value in BRL. */
-export type Money = number;
+export interface CredentialsListParams {
+  limit?: number;
+  startingAfter?: string;
+}

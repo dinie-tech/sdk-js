@@ -17,7 +17,7 @@
 
 import { UnknownWebhookEventError, WebhookSignatureError, Webhooks } from '../../src/index.js';
 import type {
-  CreditOfferEventData,
+  CreditOfferData,
   CustomerCreatedData,
   CustomerCreatedEvent,
   CustomerDeniedData,
@@ -161,10 +161,10 @@ describe('Webhooks.extract — all 15 webhook events (story 007)', () => {
             expectTypeOf(event.data).toEqualTypeOf<CustomerKycUpdatedData>();
             break;
           case 'credit_offer.available':
-            expectTypeOf(event.data).toEqualTypeOf<CreditOfferEventData>();
+            expectTypeOf(event.data).toEqualTypeOf<CreditOfferData>();
             break;
           case 'credit_offer.expired':
-            expectTypeOf(event.data).toEqualTypeOf<CreditOfferEventData>();
+            expectTypeOf(event.data).toEqualTypeOf<CreditOfferData>();
             break;
           case 'loan.created':
             expectTypeOf(event.data).toEqualTypeOf<LoanCreatedData>();

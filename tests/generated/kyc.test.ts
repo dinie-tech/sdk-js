@@ -14,13 +14,15 @@
 
 import { Customers } from '../../src/generated/resources/customers.js';
 import {
-  deserializeKycAttachmentResponse,
   deserializeKycRequirement,
   kycUploadToFormData,
   serializeKycUpload,
-  type KycAttachmentResponseWire,
   type KycRequirementWire,
-} from '../../src/generated/types/kyc/index.js';
+} from '../../src/generated/types/kyc.js';
+import {
+  deserializeKycAttachmentResponse,
+  type KycAttachmentResponseWire,
+} from '../../src/generated/types/kyc-attachment-response.js';
 import { HttpClient } from '../../src/runtime/http.js';
 import { Dinie } from '../../src/index.js';
 import type {
@@ -268,8 +270,8 @@ describe('identity requirement — nested CNH|RG submitted (DS-IMPLICIT) + attac
       submitted: {
         evidence_type: 'cnh',
         attachments: [
-          { attachment_type: 'front', submitted_at: 1772791200 },
-          { attachment_type: 'back', submitted_at: null },
+          { attachment_type: 'front', submitted: true },
+          { attachment_type: 'back', submitted: false },
         ],
         review_status: 'pending',
         review_reason: null,
@@ -283,10 +285,10 @@ describe('identity requirement — nested CNH|RG submitted (DS-IMPLICIT) + attac
       expect(req.submitted?.evidenceType).toBe('cnh');
       expect(req.submitted?.reviewStatus).toBe('pending');
       expect(req.submitted?.reviewReason).toBeNull();
-      // submitted_at: null preserved (R-EPOCH, nullable) — not yet uploaded.
+      // V0.5 contract: `submitted: boolean` replaces `submitted_at: number | null`
       expect(req.submitted?.attachments).toEqual([
-        { attachmentType: 'front', submittedAt: 1772791200 },
-        { attachmentType: 'back', submittedAt: null },
+        { attachmentType: 'front', submitted: true },
+        { attachmentType: 'back', submitted: false },
       ]);
     }
   });
@@ -301,8 +303,8 @@ describe('identity requirement — nested CNH|RG submitted (DS-IMPLICIT) + attac
       submitted: {
         evidence_type: 'rg',
         attachments: [
-          { attachment_type: 'front', submitted_at: 1772791200 },
-          { attachment_type: 'back', submitted_at: 1772791200 },
+          { attachment_type: 'front', submitted: true },
+          { attachment_type: 'back', submitted: true },
         ],
         review_status: 'accepted',
         review_reason: null,
@@ -531,43 +533,22 @@ describe('kycUploadToFormData — multipart framing (DS-MULTIPART)', () => {
 
 // ── KycAttachmentResponse round-trip (the openapi `uploadKycAttachment` 201 example) ──
 
-/** The `KycAttachmentResponse` example from the openapi `POST /kyc-attachments` 201 (@3fcfd83). */
+/** The `KycAttachmentResponse` wire from the openapi `POST /kyc-attachments` 201 (V0.5 contract).
+ *  V0.5 simplified: confirmation only — attachment_type + submitted flag (no id/uploaded_at/requirement).
+ *  To inspect requirement state after upload, read the customer endpoint. */
 const ATTACHMENT_RESPONSE_WIRE: KycAttachmentResponseWire = {
-  id: 'ka_550e8400e29b41d4a716446655440001',
-  uploaded_at: 1772791200,
-  requirement: {
-    requirement_type: 'identity',
-    requirement_id: 'identity_003XXXXXXXXXXXXXXX',
-    label: 'Documento de identidade',
-    mandatory: true,
-    subject: SUBJECT_WIRE,
-    submitted: {
-      evidence_type: 'cnh',
-      attachments: [
-        { attachment_type: 'front', submitted_at: 1772791200 },
-        { attachment_type: 'back', submitted_at: null },
-      ],
-      review_status: 'pending',
-      review_reason: null,
-    },
-  },
+  attachment_type: 'front',
+  submitted: true,
 };
 
-describe('deserializeKycAttachmentResponse — wraps the discriminated requirement', () => {
-  it('deserializes the openapi example, delegating the requirement to the discriminated dispatch', () => {
+describe('deserializeKycAttachmentResponse — maps the KYC attachment confirmation', () => {
+  it('deserializes the wire response to KycAttachmentResponse (attachmentType + submitted flag)', () => {
+    // V0.5 contract: simplified confirmation — no id/uploaded_at/requirement in the 201 body.
+    // Call GET /customers/{id} to read the full requirement state after an upload.
     const res = deserializeKycAttachmentResponse(ATTACHMENT_RESPONSE_WIRE);
 
-    expect(res.id).toBe('ka_550e8400e29b41d4a716446655440001');
-    expect(res.uploadedAt).toBe(1772791200);
-    expect(res.requirement.requirementType).toBe('identity');
-    if (res.requirement.requirementType === 'identity') {
-      expect(res.requirement.subject.name).toBe('Joao Silva');
-      expect(res.requirement.submitted?.evidenceType).toBe('cnh');
-      expect(res.requirement.submitted?.attachments).toEqual([
-        { attachmentType: 'front', submittedAt: 1772791200 },
-        { attachmentType: 'back', submittedAt: null },
-      ]);
-    }
+    expect(res.attachmentType).toBe('front');
+    expect(res.submitted).toBe(true);
   });
 });
 
@@ -594,11 +575,11 @@ describe('customers.kycAttachments.create — POST /kyc-attachments → KycAttac
     expect(endpoint.lastRequest?.path).toBe('/customers/cust_1/kyc-attachments');
     // Idempotent write (D9). NOTE: the request body is NOT asserted — the frozen JSON-only
     // runtime cannot yet encode the multipart FormData (tracked runtime gap, see
-    // src/generated/types/kyc/uploads.ts); the per-variant field map is proven by the
+    // src/generated/types/kyc.ts kycUploadToFormData); the per-variant field map is proven by the
     // serializeKycUpload tests above, independent of transport.
     expect(endpoint.lastRequest?.headers['x-idempotency-key']).toMatch(/^dinie-sdk-retry-/);
-    expect(res.id).toBe('ka_550e8400e29b41d4a716446655440001');
-    expect(res.requirement.requirementType).toBe('identity');
+    expect(res.attachmentType).toBe('front');
+    expect(res.submitted).toBe(true);
   });
 });
 

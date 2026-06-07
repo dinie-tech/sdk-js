@@ -224,12 +224,14 @@ describe('webhookEndpoints.rotateSecret — POST sub-path, idempotent, returns a
     });
     const client = makeClient();
 
-    const rotation = await client.webhookEndpoints.rotateSecret('we_1', { expireCurrentIn: 3600 });
+    // V0.5 generator: anonymous body is pass-through (Record<string,unknown>), no conversion.
+    // Callers must use wire-format (snake_case) keys directly.
+    const rotation = await client.webhookEndpoints.rotateSecret('we_1', { expire_current_in: 3600 });
 
     expect(endpoint.lastRequest?.method).toBe('POST');
     expect(endpoint.lastRequest?.path).toBe('/webhooks/endpoints/we_1/rotate-secret');
     expect(endpoint.lastRequest?.headers['x-idempotency-key']).toMatch(/^dinie-sdk-retry-/);
-    // Optional grace-period param → snake_case wire body (expireCurrentIn → expire_current_in).
+    // Pass-through body → wire keys are exactly what the caller passes.
     expect(JSON.parse(endpoint.lastRequest!.body)).toEqual({ expire_current_in: 3600 });
     // The new secret + the old secret's grace deadline.
     expect(rotation.secret).toBe('whsec_novo1b2c3');

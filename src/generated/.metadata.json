@@ -1,4 +1,7 @@
 {
-  "openapi_version": "2026-05-10",
-  "generator_version": "hand-authored@0.1.0"
+  "openapi_version": "2026-03-01",
+  "openapi_blob": "bc13d03825a1e42e845726fef46a786838e5f9dc",
+  "generator_version": "0.4.0",
+  "generator_commit": "f1022fc",
+  "generated_at_utc": "2026-06-07T02:29:28.568Z"
 }

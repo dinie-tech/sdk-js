@@ -313,8 +313,8 @@ describe('customers.upsertBankAccount — POST wraps the body + idempotent', () 
   });
 });
 
-describe('customers.createBiometricsSession — POST with no request body', () => {
-  it('POSTs /biometrics with an empty body + Idempotency-Key and maps the session', async () => {
+describe('customers.createBiometricsSession — POST with no typed request body', () => {
+  it('POSTs /biometrics with an Idempotency-Key and maps the session', async () => {
     mock.mockToken();
     const endpoint = mock.mockEndpoint({
       method: 'POST',
@@ -333,8 +333,8 @@ describe('customers.createBiometricsSession — POST with no request body', () =
 
     expect(endpoint.lastRequest?.method).toBe('POST');
     expect(endpoint.lastRequest?.path).toBe('/customers/cust_1/biometrics');
-    // The contract defines NO request body — the SDK sends none.
-    expect(endpoint.lastRequest?.body).toBe('');
+    // V0.5 generator: no typed params schema → body is params ?? {} (empty object when absent).
+    expect(endpoint.lastRequest?.body).toBe('{}');
     // Still an idempotent write.
     expect(endpoint.lastRequest?.headers['x-idempotency-key']).toMatch(/^dinie-sdk-retry-/);
     expect(session).toEqual({
@@ -343,7 +343,7 @@ describe('customers.createBiometricsSession — POST with no request body', () =
     });
   });
 
-  it('ignores the (empty) placeholder params arg and still sends no body', async () => {
+  it('sends the empty object body regardless of placeholder params arg', async () => {
     mock.mockToken();
     const endpoint = mock.mockEndpoint({
       method: 'POST',
@@ -354,7 +354,7 @@ describe('customers.createBiometricsSession — POST with no request body', () =
 
     await client.customers.createBiometricsSession('cust_1', {});
 
-    expect(endpoint.lastRequest?.body).toBe('');
+    expect(endpoint.lastRequest?.body).toBe('{}');
   });
 });
 
