@@ -124,6 +124,36 @@ export interface EndpointMock {
   readonly lastRequest: CapturedRequest | undefined;
 }
 
+/** Options for {@link MockUndici.mockExchange} — a `POST /biometrics/session-exchange` interceptor. */
+export interface MockExchangeOptions {
+  /**
+   * Customer access token to return. A function receives the 1-based call ordinal.
+   * Default: `(call) => \`dinie-test-customer-token-${call}\``.
+   */
+  accessToken?: string | ((call: number) => string);
+  /** `expires_in` (seconds) in the response. Default `3600`. */
+  expiresIn?: number;
+  /** `customer_id` in the 200 response body. Default `'cus_test_1'`. */
+  customerId?: string;
+  /**
+   * HTTP status to reply with (200 = success; 401/403 = T9 failure). A function receives
+   * the 1-based call ordinal for sequencing. Default `200`.
+   */
+  statusCode?: number | ((call: number) => number);
+  /** Delay each reply by this many milliseconds. */
+  delayMs?: number;
+}
+
+/** Handle returned by {@link MockUndici.mockExchange}. */
+export interface ExchangeMock {
+  /** Number of `POST /biometrics/session-exchange` calls the SDK has made so far. */
+  readonly callCount: number;
+  /** Every captured exchange request, in order. */
+  readonly requests: readonly CapturedRequest[];
+  /** The most recent exchange request, or `undefined` before the first call. */
+  readonly lastRequest: CapturedRequest | undefined;
+}
+
 /** Options for {@link MockUndici.mockCustomer} — a thin `POST /customers` convenience. */
 export interface MockCustomerOptions {
   /** Status to reply with. Default `201`. */
@@ -232,6 +262,64 @@ export class MockUndici {
           data: { access_token: token, token_type: tokenType, expires_in: expiresIn },
           responseOptions,
         };
+      })
+      .persist();
+
+    if (options.delayMs !== undefined) scope.delay(options.delayMs);
+
+    return {
+      get callCount() {
+        return requests.length;
+      },
+      get requests() {
+        return requests;
+      },
+      get lastRequest() {
+        return requests[requests.length - 1];
+      },
+    };
+  }
+
+  /**
+   * Intercept `POST /biometrics/session-exchange`, replying with a session-exchange
+   * response. The interceptor is persistent and records each request so tests can assert
+   * the POST count, the `Authorization: Bearer <cc-token>` header, and the `{code}` body.
+   *
+   * Pass `statusCode: 401` or `403` to simulate a failed exchange (T9). In that case the
+   * reply body is a minimal Problem Details object so `APIError.fromResponse` can dispatch
+   * by HTTP status (no type-URL assertion needed — status-based dispatch suffices for T9).
+   */
+  mockExchange(options: MockExchangeOptions = {}): ExchangeMock {
+    const EXCHANGE_PATH = '/biometrics/session-exchange';
+    const accessToken =
+      options.accessToken ?? ((call: number) => `dinie-test-customer-token-${call}`);
+    const expiresIn = options.expiresIn ?? 3600;
+    const customerId = options.customerId ?? 'cus_test_1';
+    const statusCode = options.statusCode ?? 200;
+    const requests: CapturedRequest[] = [];
+
+    const scope = this.pool
+      .intercept({ path: EXCHANGE_PATH, method: 'POST' })
+      .reply((opts) => {
+        const call = requests.length + 1;
+        requests.push(captureRequest(opts, EXCHANGE_PATH));
+
+        const status = typeof statusCode === 'function' ? statusCode(call) : statusCode;
+        const responseOptions = { headers: { 'content-type': 'application/json' } };
+
+        // Collect as `object` so both branches are assignable to undici's reply type.
+        const data: object =
+          status < 200 || status >= 300
+            ? // Minimal Problem Details body — status-based dispatch in APIError.fromResponse.
+              { title: status === 401 ? 'Unauthorized' : 'Forbidden', status, detail: 'Session exchange failed' }
+            : {
+                access_token: typeof accessToken === 'function' ? accessToken(call) : accessToken,
+                token_type: 'Bearer',
+                expires_in: expiresIn,
+                customer_id: customerId,
+              };
+
+        return { statusCode: status, data, responseOptions };
       })
       .persist();
 

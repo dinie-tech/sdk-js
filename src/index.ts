@@ -37,6 +37,7 @@ export {
   APIConnectionError,
   APITimeoutError,
   OAuthError,
+  SessionTokenExpiredError,
   WebhookSignatureError,
   WebhookTimestampError,
   UnknownWebhookEventError,

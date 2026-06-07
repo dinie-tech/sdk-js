@@ -210,6 +210,20 @@ export class WebhookSignatureError extends DinieError {}
 export class WebhookTimestampError extends DinieError {}
 
 /**
+ * The customer-scoped session token has expired and cannot be refreshed.
+ *
+ * Raised in session mode (`Dinie({ ..., code })`) when the customer token's TTL
+ * elapses or `invalidate()` is called after a successful exchange. The `code` is
+ * single-use; obtain a fresh code and construct a new `Dinie({ ..., code })` instance.
+ *
+ * Extends {@link DinieError} directly — there is no HTTP response at the point of
+ * expiry (the token simply ages out). Compare with T9 exchange failures, where the
+ * exchange step itself gets a non-2xx response; those propagate the typed
+ * {@link APIError} from `APIError.fromResponse`.
+ */
+export class SessionTokenExpiredError extends DinieError {}
+
+/**
  * A webhook signature verified, but the payload's `type` is not in the openapi event catalog
  * (`generated/events/`) — so `Webhooks.extract` has no per-type deserializer for it (D10/§5.6,
  * OQ#2). Client-side (the payload is authentic; only its `type` is unrecognized), so it lives in
