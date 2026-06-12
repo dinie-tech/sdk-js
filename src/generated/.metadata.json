@@ -1,8 +1,8 @@
 {
   "openapi_version": "2026-03-01",
-  "openapi_sha": "",
+  "openapi_sha": "0d11b3f8bcb72f86eac21e4de235ed4a8981dac2",
   "openapi_blob": "bc13d03825a1e42e845726fef46a786838e5f9dc",
   "generator_version": "0.4.0",
-  "generator_commit": "89a8b96",
-  "generated_at_utc": "2026-06-12T12:34:57.658Z"
+  "generator_commit": "4dd4386",
+  "generated_at_utc": "2026-06-12T17:27:43.417Z"
 }
