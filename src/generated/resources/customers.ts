@@ -49,6 +49,9 @@ function customerPath(id: string): string {
   return `${CUSTOMERS_PATH}/${encodeURIComponent(id)}`;
 }
 
+/**
+ * Operations on the customers resource.
+ */
 export class Customers {
   readonly #http: HttpClient;
   readonly creditOffers: CustomersCreditOffers;
@@ -60,6 +63,14 @@ export class Customers {
     this.kycAttachments = new CustomersKycAttachments(http);
   }
 
+  /**
+   * Register a new customer
+   *
+   * Register a new customer in `creating` status, idempotent on CPF
+   *
+   * @param params Request parameters.
+   * @param options Request options.
+   */
   async create(params: CreateCustomerRequest, options?: RequestOptions): Promise<Customer> {
     const wire = await this.#http.request<CustomerWire>({
       method: 'POST',
@@ -71,6 +82,15 @@ export class Customers {
     return deserializeCustomer(wire);
   }
 
+  /**
+   * Create a biometrics capture session
+   *
+   * Generate a single-use bootstrap code for the customer-facing biometrics flow. The response includes a `session_url` the partner can embed or redirect to — the kyc-app reads the code from the URL and exchanges it for a scoped session token via `POST /biometrics/session-exchange`.
+   *
+   * @param customerId Identificador único do cliente
+   * @param params Request parameters.
+   * @param options Request options.
+   */
   async createBiometricsSession(
     id: string,
     params?: Record<string, unknown>,
@@ -86,6 +106,14 @@ export class Customers {
     return deserializeBiometricsSession(wire);
   }
 
+  /**
+   * List customers
+   *
+   * List and search customers with optional filters for `cpf`, `external_id`, and `status`
+   *
+   * @param params Request parameters.
+   * @param options Request options.
+   */
   list(params?: CustomersListParams, options?: RequestOptions): PagePromise<Customer> {
     const fetchPage: FetchPage<Customer> = (cursor) => {
       const startingAfter = cursor ?? params?.startingAfter;
@@ -110,6 +138,14 @@ export class Customers {
     return new PagePromise<Customer>(fetchPage);
   }
 
+  /**
+   * Retrieve a customer
+   *
+   * Return the full customer object including registration data, status, and KYC progress
+   *
+   * @param customerId Identificador único do cliente
+   * @param options Request options.
+   */
   async retrieve(id: string, options?: RequestOptions): Promise<Customer> {
     const wire = await this.#http.request<CustomerWire>({
       method: 'GET',
@@ -120,6 +156,14 @@ export class Customers {
     return deserializeCustomer(wire);
   }
 
+  /**
+   * Get customer bank account
+   *
+   * Return the bank account currently linked to this customer, if one exists.
+   *
+   * @param customerId Identificador único do cliente
+   * @param options Request options.
+   */
   async retrieveBankAccount(id: string, options?: RequestOptions): Promise<CustomerBankAccount> {
     const wire = await this.#http.request<CustomerBankAccountWire>({
       method: 'GET',
@@ -130,6 +174,14 @@ export class Customers {
     return deserializeCustomerBankAccount(wire);
   }
 
+  /**
+   * Submit documents for KYC review
+   *
+   * Signal that all KYC documents have been uploaded and are ready for review. Submits documents to the verification pipeline. Also handles resubmission after document corrections.
+   *
+   * @param customerId Identificador único do cliente
+   * @param options Request options.
+   */
   async startKycReview(id: string, options?: RequestOptions): Promise<void> {
     await this.#http.request<void>({
       method: 'POST',
@@ -139,6 +191,15 @@ export class Customers {
     });
   }
 
+  /**
+   * Update customer data
+   *
+   * Update customer fields such as email or phone; `cpf`, `cnpj`, `name`, `trading_name`, and `external_id` are read-only
+   *
+   * @param customerId Identificador único do cliente
+   * @param params Request parameters.
+   * @param options Request options.
+   */
   async update(
     id: string,
     params: UpdateCustomerRequest,
@@ -154,6 +215,15 @@ export class Customers {
     return deserializeCustomer(wire);
   }
 
+  /**
+   * Create or update customer bank account
+   *
+   * Create or update the bank account linked to this customer. This endpoint is available to biometrics session tokens so the kyc-app can collect disbursement bank data.
+   *
+   * @param customerId Identificador único do cliente
+   * @param params Request parameters.
+   * @param options Request options.
+   */
   async upsertBankAccount(
     id: string,
     params: CustomerBankAccountRequest,
@@ -170,6 +240,9 @@ export class Customers {
   }
 }
 
+/**
+ * Operations on the customers credit offers resource.
+ */
 export class CustomersCreditOffers {
   readonly #http: HttpClient;
 
@@ -177,6 +250,15 @@ export class CustomersCreditOffers {
     this.#http = http;
   }
 
+  /**
+   * List credit offers for a customer
+   *
+   * List credit offers for a specific customer, filterable by `status`
+   *
+   * @param customerId Identificador único do cliente
+   * @param params Request parameters.
+   * @param options Request options.
+   */
   list(
     customerId: string,
     params?: CustomerCreditOffersListParams,
@@ -202,6 +284,9 @@ export class CustomersCreditOffers {
   }
 }
 
+/**
+ * Operations on the customers kyc attachments resource.
+ */
 export class CustomersKycAttachments {
   readonly #http: HttpClient;
 
@@ -209,6 +294,15 @@ export class CustomersKycAttachments {
     this.#http = http;
   }
 
+  /**
+   * Upload a KYC attachment
+   *
+   * Upload a KYC attachment for the customer via `multipart/form-data`. For document requirements, send a `file`. For data-type requirements (e.g. email), send a `value` instead.
+   *
+   * @param customerId Identificador único do cliente
+   * @param params Request parameters.
+   * @param options Request options.
+   */
   async create(
     customerId: string,
     params: KycUpload,
@@ -224,6 +318,15 @@ export class CustomersKycAttachments {
     return deserializeKycAttachmentResponse(wire);
   }
 
+  /**
+   * Upload a KYC selfie
+   *
+   * Session-only upload of a selfie for biometric validation. Counterpart of the polymorphic `/kyc-attachments` route, dedicated to selfies: `evidence_type` (`selfie`) and `attachment_type` (`photo`) are implicit, so the partner only supplies `requirement_id` (`selfie_{subject_id}`) and the `file`. Requires a session token bound to the customer — a partner bearer is denied (403), even with `kyc:upload`.
+   *
+   * @param customerId Identificador único do cliente
+   * @param params Request parameters.
+   * @param options Request options.
+   */
   async uploadSelfie(
     customerId: string,
     params?: Record<string, unknown>,

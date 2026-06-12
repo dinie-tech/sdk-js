@@ -13,7 +13,11 @@
  */
 
 import { Dinie } from '../../src/index.js';
-import type { CreditOffer, FixedInstallmentCreditOffer, RangeInstallmentCreditOffer } from '../../src/index.js';
+import type {
+  CreditOffer,
+  FixedInstallmentCreditOffer,
+  RangeInstallmentCreditOffer,
+} from '../../src/index.js';
 import { useMockUndici } from '../_helpers/mock-undici.js';
 
 const mock = useMockUndici();

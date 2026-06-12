@@ -1,14 +1,33 @@
 {
-  "name": "@dinie/sdk",
-  "version": "0.1.0",
+  "name": "dinie-sdk",
+  "version": "1.0.0",
   "description": "Official TypeScript/JavaScript SDK for the Dinie V3 API (backend-only).",
   "type": "module",
-  "private": true,
   "license": "MIT",
   "engines": {
     "node": ">=18"
   },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "apiVersion": "2026-03-01",
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "prepack": "npm run build",
     "type-check": "tsc --noEmit",
     "test": "vitest run",
     "format": "prettier --write .",

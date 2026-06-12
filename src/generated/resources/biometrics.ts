@@ -14,6 +14,9 @@ import {
 /** Path of the biometrics collection. */
 const BIOMETRICS_PATH = '/biometrics/session-exchange';
 
+/**
+ * Operations on the biometrics resource.
+ */
 export class Biometrics {
   readonly #http: HttpClient;
 
@@ -21,6 +24,14 @@ export class Biometrics {
     this.#http = http;
   }
 
+  /**
+   * Exchange a biometrics bootstrap code for a session token
+   *
+   * Internal endpoint — the kyc-app calls this with a credential that only has the `biometrics:exchange` scope, swapping the single-use bootstrap code (`dinie_bsc_…`) for a Token bound to the session's CreditLineApplication. The token is the bearer the wizard uses for every subsequent KYC request.
+   *
+   * @param params Request parameters.
+   * @param options Request options.
+   */
   async sessionExchange(
     params?: Record<string, unknown>,
     options?: RequestOptions,

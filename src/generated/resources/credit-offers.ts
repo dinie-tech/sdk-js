@@ -28,6 +28,9 @@ function creditOfferPath(id: string): string {
   return `${CREDIT_OFFERS_PATH}/${encodeURIComponent(id)}`;
 }
 
+/**
+ * Operations on the credit offers resource.
+ */
 export class CreditOffers {
   readonly #http: HttpClient;
 
@@ -35,6 +38,15 @@ export class CreditOffers {
     this.#http = http;
   }
 
+  /**
+   * Simulate a loan
+   *
+   * Simulate a loan scenario for a credit offer, returning installment value, fees, and total cost
+   *
+   * @param creditOfferId Identificador único da oferta de crédito
+   * @param params Request parameters.
+   * @param options Request options.
+   */
   async createSimulation(
     id: string,
     params: CreateSimulationRequest,
@@ -50,6 +62,14 @@ export class CreditOffers {
     return deserializeSimulation(wire);
   }
 
+  /**
+   * List credit offers
+   *
+   * List credit offers across all customers, filterable by `customer_id` and `status`
+   *
+   * @param params Request parameters.
+   * @param options Request options.
+   */
   list(params?: CreditOffersListParams, options?: RequestOptions): PagePromise<CreditOffer> {
     const fetchPage: FetchPage<CreditOffer> = (cursor) => {
       const startingAfter = cursor ?? params?.startingAfter;
@@ -71,6 +91,14 @@ export class CreditOffers {
     return new PagePromise<CreditOffer>(fetchPage);
   }
 
+  /**
+   * Retrieve a credit offer
+   *
+   * Return the full credit offer object with approved amount, interest rate, and validity
+   *
+   * @param creditOfferId Identificador único da oferta de crédito
+   * @param options Request options.
+   */
   async retrieve(id: string, options?: RequestOptions): Promise<CreditOffer> {
     const wire = await this.#http.request<CreditOfferWire>({
       method: 'GET',

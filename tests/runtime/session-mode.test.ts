@@ -365,9 +365,7 @@ describe('T9 — exchange never succeeded: typed APIError propagates', () => {
     const tm = makeSessionManager();
 
     const N = 6;
-    const settled = await Promise.allSettled(
-      Array.from({ length: N }, () => tm.getAccessToken()),
-    );
+    const settled = await Promise.allSettled(Array.from({ length: N }, () => tm.getAccessToken()));
 
     // All callers should have failed with AuthError (not wedged indefinitely).
     expect(settled.every((r) => r.status === 'rejected')).toBe(true);

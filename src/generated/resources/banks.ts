@@ -15,6 +15,9 @@ interface BankListWire {
   data: BankWire[];
 }
 
+/**
+ * Operations on the banks resource.
+ */
 export class Banks {
   readonly #http: HttpClient;
 
@@ -22,6 +25,13 @@ export class Banks {
     this.#http = http;
   }
 
+  /**
+   * List banks
+   *
+   * List banks available for customer bank account submission.
+   *
+   * @param options Request options.
+   */
   async list(options?: RequestOptions): Promise<Bank[]> {
     const wire = await this.#http.request<BankListWire>({
       method: 'GET',

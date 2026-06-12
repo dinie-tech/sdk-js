@@ -226,7 +226,9 @@ describe('webhookEndpoints.rotateSecret — POST sub-path, idempotent, returns a
 
     // V0.5 generator: anonymous body is pass-through (Record<string,unknown>), no conversion.
     // Callers must use wire-format (snake_case) keys directly.
-    const rotation = await client.webhookEndpoints.rotateSecret('we_1', { expire_current_in: 3600 });
+    const rotation = await client.webhookEndpoints.rotateSecret('we_1', {
+      expire_current_in: 3600,
+    });
 
     expect(endpoint.lastRequest?.method).toBe('POST');
     expect(endpoint.lastRequest?.path).toBe('/webhooks/endpoints/we_1/rotate-secret');

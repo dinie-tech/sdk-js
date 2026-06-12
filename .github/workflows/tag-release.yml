@@ -1,0 +1,62 @@
+name: Tag Release
+
+# Creates the vX.Y.Z tag on merge of a generator-bump PR, using the GitHub App token.
+#
+# D8: Triggers on PR close; the guard fires only when the PR was merged AND carries
+# the 'generator-bump' label (the label that the auto-PR opens with, §8.2).
+#
+# D9 (LOAD-BEARING): The tag MUST be pushed with the App token, NOT with the default
+# GITHUB_TOKEN. GitHub's anti-recursion guard prevents a GITHUB_TOKEN-pushed tag from
+# triggering publish.yml (on: push: tags). Pushing with the App token bypasses this
+# guard and lets publish.yml fire automatically.
+#
+# Reviewer note (L17): the generator auto-PR uses real collaborators yrosaguiar and
+# jaisonerick. This workflow does not open PRs; it only tags after a PR is merged.
+#
+# Requires (pre-set by team lead, per setup-state.md prereq #8 and team-lead message):
+#   - vars.GH_APP_ID = 3990789 (GitHub App 'dinie-sdk-app', not a secret)
+#   - secrets.GH_APP_PRIVATE_KEY (the App private key)
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: read # GITHUB_TOKEN is minimised; all push work uses the App token below.
+
+jobs:
+  tag:
+    name: Tag vX.Y.Z with App token (D9)
+    # Only fire when the PR was actually merged AND carries the 'generator-bump' label.
+    if: |
+      github.event.pull_request.merged == true &&
+      contains(github.event.pull_request.labels.*.name, 'generator-bump')
+    runs-on: ubuntu-latest
+    steps:
+      # D9: Mint the App token FIRST. This token is used for checkout and tag push
+      # so the resulting push is attributed to the App, not GITHUB_TOKEN.
+      - name: Mint GitHub App token (D9)
+        id: app
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.GH_APP_ID }}
+          private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
+
+      # Checkout with the App token so the remote is configured to use it for push.
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ steps.app.outputs.token }}
+
+      - name: Read version from package.json and push tag
+        # Reads the version field from package.json, creates a lightweight tag,
+        # and pushes it with the App token (D9) so publish.yml fires.
+        # node is pre-installed on ubuntu-latest runners.
+        run: |
+          V=$(node -p "require('./package.json').version")
+          if [ -z "$V" ]; then
+            echo "ERROR: could not read version from package.json" >&2
+            exit 1
+          fi
+          echo "Tagging v${V}"
+          git tag "v${V}"
+          git push origin "v${V}"

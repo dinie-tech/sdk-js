@@ -1,4 +1,4 @@
-# @dinie/sdk
+# dinie-sdk
 
 SDK oficial TypeScript/JavaScript para a **API V3 da Dinie** — crédito como serviço
 (Crédito-as-a-Service) para parceiros. Uma superfície tipada sobre os 6 resources da
@@ -6,10 +6,6 @@ API (clientes, ofertas de crédito, empréstimos, bancos, credenciais e endpoint
 webhook), com OAuth2 transparente, retries idempotentes, paginação automática, erros
 tipados (RFC 9457) e verificação de webhook — tudo em código que `tsc --noEmit` strict
 aceita.
-
-> 🚧 Privado, em desenvolvimento. A superfície pública está **congelada na V0.2** (esta
-> versão) e serve de contrato de referência: é o _golden_ contra o qual o gerador
-> cross-language (V0.4) é validado.
 
 **Backend-only.** O SDK lança erro se rodar no browser: o `clientSecret` do OAuth2 não
 pode existir no front-end. A autenticação OAuth2 Client Credentials é **transparente** —
@@ -21,7 +17,7 @@ o parceiro nunca chama o endpoint de auth; o SDK obtém e renova o token sozinho
 ## Instalação
 
 ```bash
-npm install @dinie/sdk
+npm install dinie-sdk
 ```
 
 ## Configuração
@@ -29,7 +25,7 @@ npm install @dinie/sdk
 Crie **uma** instância de `Dinie` por processo (ver [Auth](#autenticação-oauth2)) e reuse-a:
 
 ```typescript
-import { Dinie } from '@dinie/sdk';
+import { Dinie } from 'dinie-sdk';
 
 const dinie = new Dinie({
   clientId: process.env.DINIE_CLIENT_ID!,
@@ -78,7 +74,7 @@ O fluxo central da metodologia (arquitetura §15.2). A oferta de crédito **não
 pelo parceiro: ela é emitida pelo Core da Dinie e chega via webhook `credit_offer.available`.
 
 ```typescript
-import { Dinie, Webhooks } from '@dinie/sdk';
+import { Dinie, Webhooks } from 'dinie-sdk';
 
 const dinie = new Dinie({
   clientId: process.env.DINIE_CLIENT_ID!,
@@ -135,8 +131,8 @@ rotação, janela de timestamp bidirecional) **e** desserializa o corpo para o m
 tipado da união `WebhookEvent`. Passe o corpo **cru** (antes de `JSON.parse`).
 
 ```typescript
-import { Webhooks } from '@dinie/sdk';
-import type { WebhookEvent } from '@dinie/sdk';
+import { Webhooks } from 'dinie-sdk';
+import type { WebhookEvent } from 'dinie-sdk';
 
 function handleDinieWebhook(req: {
   headers: Record<string, string | string[] | undefined>;
@@ -188,7 +184,7 @@ Toda resposta de erro do servidor vira uma classe tipada que estende `APIStatusE
 (despachada por `type` URL RFC 9457, com fallback por status). Discrimine com `instanceof`:
 
 ```typescript
-import { Dinie, NotFoundError, ValidationError, RateLimitError, parseRetryAfter } from '@dinie/sdk';
+import { Dinie, NotFoundError, ValidationError, RateLimitError, parseRetryAfter } from 'dinie-sdk';
 
 try {
   await dinie.loans.retrieve('ln_inexistente');

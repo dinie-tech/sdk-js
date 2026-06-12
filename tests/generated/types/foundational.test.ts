@@ -297,7 +297,8 @@ describe('deserializeCreditOffer — wire (snake) → CreditOffer (camel), R10',
 
   it('supports the range product (min/max installments, no fixed installments)', () => {
     // Cast to Fixed to destructure `installments` — wire base shared by both variants
-    const { installments: _omit, ...rangeWire } = wireCreditOffer() as FixedInstallmentCreditOfferWire;
+    const { installments: _omit, ...rangeWire } =
+      wireCreditOffer() as FixedInstallmentCreditOfferWire;
     const offer = deserializeCreditOffer({
       ...rangeWire,
       min_installments: 3,

@@ -311,7 +311,11 @@ export class MockUndici {
         const data: object =
           status < 200 || status >= 300
             ? // Minimal Problem Details body — status-based dispatch in APIError.fromResponse.
-              { title: status === 401 ? 'Unauthorized' : 'Forbidden', status, detail: 'Session exchange failed' }
+              {
+                title: status === 401 ? 'Unauthorized' : 'Forbidden',
+                status,
+                detail: 'Session exchange failed',
+              }
             : {
                 access_token: typeof accessToken === 'function' ? accessToken(call) : accessToken,
                 token_type: 'Bearer',
