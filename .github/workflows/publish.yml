@@ -1,0 +1,93 @@
+name: Publish
+
+# Publishes dinie-sdk to npm via OIDC Trusted Publishing (keyless — no token).
+#
+# D1: No NODE_AUTH_TOKEN / NPM_TOKEN here, in the job, or anywhere in this repo.
+# Authentication is solely via the OIDC id-token (GitHub → npm federation, npm CLI ≥ 11.5.1).
+#
+# D8: Triggered by a tag push (v*). The tag is auto-created by tag-release.yml on a
+# generator-bump PR merge.
+#
+# D9: tag-release.yml pushes the tag with the GitHub App token (not GITHUB_TOKEN) so
+# that this workflow actually fires — GITHUB_TOKEN-pushed tags do NOT trigger other
+# workflows (GitHub anti-recursion guard).
+#
+# R1 BOOTSTRAP (one-time, user-performed):
+#   npm trusted-publisher config lives on an existing package's settings page.
+#   The package dinie-sdk must exist on npmjs.com before the trusted publisher
+#   can be registered. One-time manual first publish (short-lived token, never stored as
+#   a CI secret) to create the package, then configure the trusted publisher, then all
+#   subsequent publishes are keyless via this workflow.
+#
+# R4: The sandbox repo is private → npm provenance attestation is not generated.
+#   Accepted for sandbox; provenance auto-generates on the public real repo.
+#   Do NOT set --provenance or publishConfig.provenance:true (fails on private repos).
+#
+# Requires (user-created, per setup-state.md prereqs #3/#9):
+#   - npm trusted publisher registered: package=dinie-sdk, org/user=dinie-tech,
+#     repository=sdk-js, workflow=publish.yml, environment=npm
+#   - GitHub Environment 'npm' created on this repo
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish to npm + create GitHub Release
+    runs-on: ubuntu-latest
+    environment: npm
+
+    permissions:
+      id-token: write # MANDATORY for OIDC Trusted Publishing (D1)
+      contents: write # required to create the GitHub Release
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Ensure npm ≥ 11.5.1 (required for OIDC trusted publishing)
+        # Node 22 ships with npm 10.x; npm 11.5.1+ is required for keyless OIDC publish.
+        run: npm install -g npm@latest
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        # Runs tsc -p tsconfig.build.json → emits dist/ + .d.ts (prepack is wired separately)
+        run: npm run build
+
+      - name: Publish to npm (OIDC — no token)
+        # Keyless: the npm CLI ≥ 11.5.1 detects the GitHub OIDC environment and exchanges
+        # the id-token for a short-lived npm access token automatically.
+        # --access public is inherited from publishConfig.access in package.json.
+        # NODE_AUTH_TOKEN is intentionally not set (D1 falsifier: no registry token).
+        run: npm publish
+
+      - name: Extract release notes from CHANGELOG
+        # DoD #7: extracts the [X.Y.Z] section verbatim so the GitHub Release body
+        # equals the CHANGELOG section byte-for-byte (modulo surrounding whitespace).
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          awk -v ver="[${VERSION}]" \
+            'index($0, "## " ver) == 1 { found=1; next } found && /^## \[/ { exit } found { print }' \
+            CHANGELOG.md > /tmp/release_body.md
+          echo "--- Release body ---"
+          cat /tmp/release_body.md
+          echo "--- End release body ---"
+
+      - name: Create GitHub Release
+        # DoD #7: body_path references the CHANGELOG section extracted above,
+        # making the Release body == CHANGELOG [X.Y.Z] section (assertable equality).
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: /tmp/release_body.md

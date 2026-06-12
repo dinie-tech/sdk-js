@@ -33,6 +33,9 @@ function webhookEndpointPath(id: string): string {
   return `${WEBHOOK_ENDPOINTS_PATH}/${encodeURIComponent(id)}`;
 }
 
+/**
+ * Operations on the webhook endpoints resource.
+ */
 export class WebhookEndpoints {
   readonly #http: HttpClient;
 
@@ -40,6 +43,14 @@ export class WebhookEndpoints {
     this.#http = http;
   }
 
+  /**
+   * Create a webhook endpoint
+   *
+   * Create a webhook endpoint; the HMAC signing `secret` is returned only in this response
+   *
+   * @param params Request parameters.
+   * @param options Request options.
+   */
   async create(
     params: CreateWebhookEndpointRequest,
     options?: RequestOptions,
@@ -54,6 +65,14 @@ export class WebhookEndpoints {
     return deserializeWebhookEndpointWithSecret(wire);
   }
 
+  /**
+   * Delete a webhook endpoint
+   *
+   * Delete a webhook endpoint and stop all deliveries
+   *
+   * @param webhookEndpointId Identificador único do endpoint de webhook
+   * @param options Request options.
+   */
   async delete(id: string, options?: RequestOptions): Promise<void> {
     await this.#http.request<void>({
       method: 'DELETE',
@@ -63,6 +82,14 @@ export class WebhookEndpoints {
     });
   }
 
+  /**
+   * List webhook endpoints
+   *
+   * List all configured webhook endpoints with URL, subscribed events, and status
+   *
+   * @param params Request parameters.
+   * @param options Request options.
+   */
   list(
     params?: WebhookEndpointsListParams,
     options?: RequestOptions,
@@ -85,6 +112,14 @@ export class WebhookEndpoints {
     return new PagePromise<WebhookEndpoint>(fetchPage);
   }
 
+  /**
+   * Retrieve a webhook endpoint
+   *
+   * Return details of a specific webhook endpoint including URL, events, and status
+   *
+   * @param webhookEndpointId Identificador único do endpoint de webhook
+   * @param options Request options.
+   */
   async retrieve(id: string, options?: RequestOptions): Promise<WebhookEndpoint> {
     const wire = await this.#http.request<WebhookEndpointWire>({
       method: 'GET',
@@ -95,6 +130,15 @@ export class WebhookEndpoints {
     return deserializeWebhookEndpoint(wire);
   }
 
+  /**
+   * Rotate the signing secret
+   *
+   * Rotate the HMAC signing secret; the previous secret remains valid for the grace period
+   *
+   * @param webhookEndpointId Identificador único do endpoint de webhook
+   * @param params Request parameters.
+   * @param options Request options.
+   */
   async rotateSecret(
     id: string,
     params?: Record<string, unknown>,
@@ -110,6 +154,15 @@ export class WebhookEndpoints {
     return deserializeWebhookSecretRotation(wire);
   }
 
+  /**
+   * Update a webhook endpoint
+   *
+   * Update URL, events, description, or status of a webhook endpoint
+   *
+   * @param webhookEndpointId Identificador único do endpoint de webhook
+   * @param params Request parameters.
+   * @param options Request options.
+   */
   async update(
     id: string,
     params: UpdateWebhookEndpointRequest,

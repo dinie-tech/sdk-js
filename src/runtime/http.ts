@@ -56,6 +56,9 @@ import { RuntimeLogger, newRequestLogID, type LogLevel, type Logger } from './lo
 import { RateLimitTracker, type RateLimit } from './rate-limit.js';
 import { isRetryableNetworkError, retryDelay, shouldRetry } from './retry.js';
 import { TokenManager } from './token-manager.js';
+// Controlled inverse imports: runtime reads generator-emitted constants (D3/§6.2).
+import { API_VERSION } from '../generated/api-version.js';
+import { VERSION } from '../version.js';
 
 // ── Public config / options (re-exported via runtime barrel — architecture §4.1) ──
 
@@ -160,10 +163,9 @@ const DEFAULT_TIMEOUT_MS = 30_000;
 /** Default retry budget after the first attempt. */
 const DEFAULT_MAX_RETRIES = 3;
 
-/** SDK semver — hardcoded in V0.1 (comes from `generated/.metadata.json` at V0.4). */
-const SDK_VERSION = '0.1.0';
-/** API version pin — placeholder in V0.1 (also generator-sourced at V0.4). */
-const API_VERSION = '2026-05-10';
+/** SDK semver — read from `src/version.ts` (written by `bump`). */
+const SDK_VERSION = VERSION;
+// API_VERSION imported from generated/api-version.ts (generator-emitted constant, D3/§6.2).
 /** Runtime version for telemetry (e.g. `20.11.0`). */
 const NODE_VERSION = process.versions.node;
 /** `User-Agent` sent on every request (architecture §5.1). */

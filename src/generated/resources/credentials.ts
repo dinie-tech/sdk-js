@@ -26,6 +26,9 @@ function credentialPath(clientId: string): string {
   return `${CREDENTIALS_PATH}/${encodeURIComponent(clientId)}`;
 }
 
+/**
+ * Operations on the credentials resource.
+ */
 export class Credentials {
   readonly #http: HttpClient;
 
@@ -33,6 +36,14 @@ export class Credentials {
     this.#http = http;
   }
 
+  /**
+   * Create a new API key
+   *
+   * Create a new credential pair; the `client_secret` is shown only once in the response
+   *
+   * @param params Request parameters.
+   * @param options Request options.
+   */
   async create(
     params: CreateCredentialRequest,
     options?: RequestOptions,
@@ -47,6 +58,14 @@ export class Credentials {
     return deserializeCredentialWithSecret(wire);
   }
 
+  /**
+   * List API keys
+   *
+   * Return all API credentials for the authenticated partner
+   *
+   * @param params Request parameters.
+   * @param options Request options.
+   */
   list(params?: CredentialsListParams, options?: RequestOptions): PagePromise<Credential> {
     const fetchPage: FetchPage<Credential> = (cursor) => {
       const startingAfter = cursor ?? params?.startingAfter;
@@ -66,6 +85,14 @@ export class Credentials {
     return new PagePromise<Credential>(fetchPage);
   }
 
+  /**
+   * Revoke an API key
+   *
+   * Immediately and permanently revoke an API credential
+   *
+   * @param clientId Path parameter.
+   * @param options Request options.
+   */
   async revoke(clientId: string, options?: RequestOptions): Promise<void> {
     await this.#http.request<void>({
       method: 'DELETE',

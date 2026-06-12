@@ -28,6 +28,9 @@ function loanPath(id: string): string {
   return `${LOANS_PATH}/${encodeURIComponent(id)}`;
 }
 
+/**
+ * Operations on the loans resource.
+ */
 export class Loans {
   readonly #http: HttpClient;
   readonly transactions: LoansTransactions;
@@ -37,6 +40,14 @@ export class Loans {
     this.transactions = new LoansTransactions(http);
   }
 
+  /**
+   * Create a loan
+   *
+   * Create a loan from a credit offer and accepted simulation; the CCB contract is generated synchronously and the loan starts in `awaiting_signatures` status
+   *
+   * @param params Request parameters.
+   * @param options Request options.
+   */
   async create(params: CreateLoanRequest, options?: RequestOptions): Promise<Loan> {
     const wire = await this.#http.request<LoanWire>({
       method: 'POST',
@@ -48,6 +59,14 @@ export class Loans {
     return deserializeLoan(wire);
   }
 
+  /**
+   * Retrieve a loan
+   *
+   * Return the full loan object with lifecycle details
+   *
+   * @param loanId Identificador único do empréstimo
+   * @param options Request options.
+   */
   async retrieve(id: string, options?: RequestOptions): Promise<Loan> {
     const wire = await this.#http.request<LoanWire>({
       method: 'GET',
@@ -59,6 +78,9 @@ export class Loans {
   }
 }
 
+/**
+ * Operations on the loans transactions resource.
+ */
 export class LoansTransactions {
   readonly #http: HttpClient;
 
@@ -66,6 +88,15 @@ export class LoansTransactions {
     this.#http = http;
   }
 
+  /**
+   * List loan transactions
+   *
+   * List installment transactions for a loan with due dates, amounts, and payment status
+   *
+   * @param loanId Identificador único do empréstimo
+   * @param params Request parameters.
+   * @param options Request options.
+   */
   list(
     loanId: string,
     params?: LoanTransactionsListParams,

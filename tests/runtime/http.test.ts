@@ -18,6 +18,8 @@ import {
   ServerError,
   ValidationError,
 } from '../../src/generated/errors/index.js';
+import { API_VERSION } from '../../src/generated/api-version.js';
+import { VERSION } from '../../src/version.js';
 import { HttpClient, serializeBody, type InternalRequest } from '../../src/runtime/http.js';
 import { useMockUndici } from '../_helpers/mock-undici.js';
 
@@ -115,11 +117,14 @@ describe('HttpClient — header assembly', () => {
     expect(req?.headers['accept']).toBe('application/json');
     expect(req?.headers['content-type']).toBe('application/json');
     expect(req?.headers['x-idempotency-key']).toMatch(/^dinie-sdk-retry-/);
-    expect(req?.headers['user-agent']).toMatch(
-      /^Dinie-SDK-JS\/0\.1\.0 \(api-version=2026-05-10; node\/.+\)$/,
+    // UA uses VERSION constant (from src/version.ts) + API_VERSION (from generated api-version.ts).
+    // L20/DoD #3: no hardcoded version literals — assert shape + constants, not literals.
+    expect(req?.headers['user-agent']).toBe(
+      `Dinie-SDK-JS/${VERSION} (api-version=${API_VERSION}; node/${process.versions.node})`,
     );
+    expect(req?.headers['user-agent']).toContain('api-version=2026-03-01');
     expect(req?.headers['x-dinie-sdk-language']).toBe('javascript');
-    expect(req?.headers['x-dinie-sdk-version']).toBe('0.1.0');
+    expect(req?.headers['x-dinie-sdk-version']).toBe(VERSION);
     expect(req?.headers['x-dinie-sdk-runtime']).toMatch(/^node\//);
     // First attempt carries no retry counter.
     expect(req?.headers['x-dinie-retry-count']).toBeUndefined();

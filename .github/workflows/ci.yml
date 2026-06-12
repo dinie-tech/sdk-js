@@ -15,6 +15,26 @@ jobs:
         node-version: [18, 20]
     steps:
       - uses: actions/checkout@v4
+
+      # Mint App token scoped to the dinie-tech org so we can read private repos
+      # (api-docs for conformance loader + generator for drift gate).
+      - name: Mint GitHub App token (org-scoped — api-docs + generator access)
+        id: app
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.GH_APP_ID }}
+          private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
+          owner: dinie-tech
+
+      # Conformance loader reads the api-docs contract via DINIE_OPENAPI_PATH.
+      # Checked out inside the workspace (actions/checkout enforces this boundary).
+      - name: Checkout api-docs (conformance loader — read-only SoT)
+        uses: actions/checkout@v4
+        with:
+          repository: dinie-tech/api-docs
+          path: .dinie-api-docs
+          token: ${{ steps.app.outputs.token }}
+
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
@@ -22,4 +42,50 @@ jobs:
       - run: npm ci
       - run: npm run type-check
       - run: npm test
+        env:
+          # Conformance loader override — api-docs checked out inside workspace
+          # (path ../api-docs is rejected by actions/checkout@v4).
+          DINIE_OPENAPI_PATH: ${{ github.workspace }}/.dinie-api-docs/apis/openapi.yaml
       - run: npm run format:check
+
+  drift:
+    # D7: hermetic drift gate — verifies committed src/generated/ matches what
+    # sdk-generator emits from its vendored golden spec (no oasdiff, no api-docs
+    # checkout). A hand-edit to src/generated/ makes this job red; reverting makes it green.
+    #
+    # Requires (pre-set by team lead, per setup-state.md prereq #8):
+    #   - vars.GH_APP_ID = 3990789
+    #   - secrets.GH_APP_PRIVATE_KEY
+    name: Drift gate (sdk-generator check)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout sdk-js
+        uses: actions/checkout@v4
+
+      - name: Mint GitHub App token (org-scoped — generator access)
+        id: app
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.GH_APP_ID }}
+          private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
+          owner: dinie-tech
+
+      - name: Checkout sdk-generator (vendored golden)
+        uses: actions/checkout@v4
+        with:
+          repository: dinie-tech/sdk-generator
+          path: .gen
+          token: ${{ steps.app.outputs.token }}
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install generator dependencies
+        run: cd .gen && bun install
+
+      - name: Run drift check (hermetic — no oasdiff, no api-docs)
+        # Emits from the generator's vendored golden spec and diffs vs committed
+        # src/generated/. Exit 1 if any file differs → CI red (D7).
+        # A one-char edit to src/generated/ → red; revert → green.
+        run: cd .gen && bun src/cli.ts check --target js --output "$GITHUB_WORKSPACE"
