@@ -1,8 +1,8 @@
 {
   "openapi_version": "2026-03-01",
-  "openapi_sha": "0d11b3f8bcb72f86eac21e4de235ed4a8981dac2",
-  "openapi_blob": "bc13d03825a1e42e845726fef46a786838e5f9dc",
+  "openapi_sha": "4e727fd0fcba2ff76879f6c382ad95edb93e7127",
+  "openapi_blob": "3a7a96ed22bacc0014ffbf02be878e454f3af167",
   "generator_version": "0.4.0",
-  "generator_commit": "4dd4386",
-  "generated_at_utc": "2026-06-12T17:27:43.417Z"
+  "generator_commit": "0dc5b6e",
+  "generated_at_utc": "2026-06-13T02:12:53.723Z"
 }
