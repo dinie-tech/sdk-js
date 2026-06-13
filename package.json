@@ -4,6 +4,14 @@
   "description": "Official TypeScript/JavaScript SDK for the Dinie V3 API (backend-only).",
   "type": "module",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dinie-tech/sdk-js.git"
+  },
+  "homepage": "https://github.com/dinie-tech/sdk-js#readme",
+  "bugs": {
+    "url": "https://github.com/dinie-tech/sdk-js/issues"
+  },
   "engines": {
     "node": ">=18"
   },
