@@ -127,7 +127,7 @@ function readmeConstruct(): Dinie {
   const dinie = new Dinie({
     clientId: 'test-client',
     clientSecret: 'test-secret',
-    baseUrl: 'https://sandbox.api.dinie.com.br/api/v3',
+    baseUrl: 'https://api-dev.dinietech.io/api/v3',
     logLevel: 'debug',
     idempotency: true,
   });

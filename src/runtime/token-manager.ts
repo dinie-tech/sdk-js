@@ -72,7 +72,7 @@ export interface TokenManagerOptions {
   clientId: string;
   clientSecret: string;
   /**
-   * API base URL incl. the version prefix (e.g. `https://api.dinie.com.br/api/v3`); the bare
+   * API base URL incl. the version prefix (e.g. `https://api.dinie.com/api/v3`); the bare
    * token path is resolved against it, preserving the base pathname.
    */
   baseUrl: string;

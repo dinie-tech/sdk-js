@@ -155,9 +155,9 @@ export interface HttpClientInternals {
 /**
  * Default production API base URL — carries the `/api/v3` version prefix (the openapi
  * `servers[0]`). Resource paths are bare (`/customers`), so the version lives here, in the base.
- * Overridable via config/env (sandbox: `https://sandbox.api.dinie.com.br/api/v3`).
+ * Overridable via config/env (sandbox: `https://api-dev.dinietech.io/api/v3`).
  */
-export const DEFAULT_BASE_URL = 'https://api.dinie.com.br/api/v3';
+export const DEFAULT_BASE_URL = 'https://api.dinie.com/api/v3';
 /** Default per-request timeout, in ms. */
 const DEFAULT_TIMEOUT_MS = 30_000;
 /** Default retry budget after the first attempt. */
