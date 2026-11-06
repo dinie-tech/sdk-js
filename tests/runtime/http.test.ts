@@ -99,6 +99,36 @@ describe('HttpClient — base URL pathname preservation (openapi /api/v3 fix)', 
   });
 });
 
+describe('HttpClient — default base URL', () => {
+  const production = useMockUndici('https://api.dinie.com');
+
+  it('reaches the production API under /api/v3 for both the token and resource calls when no baseUrl is configured', async () => {
+    const token = production.mockEndpoint({
+      method: 'POST',
+      path: '/api/v3/auth/token',
+      responses: {
+        statusCode: 200,
+        body: { access_token: 'tok-default', token_type: 'Bearer', expires_in: 3600 },
+      },
+    });
+    const resource = production.mockEndpoint({
+      method: 'GET',
+      path: '/api/v3/customers/cus_1',
+      responses: { statusCode: 200, body: { id: 'cus_1' } },
+    });
+    const client = new HttpClient({
+      clientId: 'client-abc',
+      clientSecret: 'secret-xyz',
+      dispatcher: production.dispatcher,
+    });
+
+    await client.request<unknown>(GET_CUSTOMER);
+
+    expect(token.lastRequest?.path).toBe('/api/v3/auth/token');
+    expect(resource.lastRequest?.path).toBe('/api/v3/customers/cus_1');
+  });
+});
+
 describe('HttpClient — header assembly', () => {
   it('assembles auth, telemetry, idempotency and content-type on a POST', async () => {
     mock.mockToken({ accessToken: 'tok-1' });

@@ -31,28 +31,28 @@ const dinie = new Dinie({
   clientId: process.env.DINIE_CLIENT_ID!,
   clientSecret: process.env.DINIE_CLIENT_SECRET!,
   // omita p/ usar produção; o sandbox carrega o mesmo prefixo de versão `/api/v3`:
-  baseUrl: 'https://sandbox.api.dinie.com.br/api/v3',
+  baseUrl: 'https://api-dev.dinietech.io/api/v3',
 });
 ```
 
 > **A `baseUrl` carrega o prefixo de versão `/api/v3`** (o `servers` do openapi). Os paths dos
 > resources são "bare" (`/customers`, `/loans/{id}`), então a versão vive na base — uma `baseUrl`
-> custom **deve** incluir `/api/v3` (ex.: `https://sandbox.api.dinie.com.br/api/v3`).
+> custom **deve** incluir `/api/v3` (ex.: `https://api-dev.dinietech.io/api/v3`).
 
 Toda opção tem default; `clientId` e `clientSecret` são obrigatórios (via argumento **ou**
 env var). As env vars são resolvidas quando o campo correspondente é omitido:
 
-| Opção          | Default                           | Env var               | Descrição                                           |
-| -------------- | --------------------------------- | --------------------- | --------------------------------------------------- |
-| `clientId`     | —                                 | `DINIE_CLIENT_ID`     | Client id do OAuth2 (obrigatório).                  |
-| `clientSecret` | —                                 | `DINIE_CLIENT_SECRET` | Client secret do OAuth2 (obrigatório).              |
-| `baseUrl`      | `https://api.dinie.com.br/api/v3` | `DINIE_BASE_URL`      | URL base da API **incluindo** `/api/v3`.            |
-| `timeout`      | `30000` (ms)                      | —                     | Timeout por requisição.                             |
-| `maxRetries`   | `3`                               | —                     | Tentativas para erros retryable (`429`/`5xx`/rede). |
-| `logLevel`     | `'off'`                           | `DINIE_LOG`           | `'off' \| 'error' \| 'warn' \| 'info' \| 'debug'`.  |
-| `logger`       | console                           | —                     | Logger custom (ver [Logging](#logging)).            |
-| `idempotency`  | `true`                            | —                     | Opt-out global de idempotency-key (foot-gun).       |
-| `dispatcher`   | `undici.Pool`                     | —                     | Seam de transporte (injeção de `undici` em testes). |
+| Opção          | Default                        | Env var               | Descrição                                           |
+| -------------- | ------------------------------ | --------------------- | --------------------------------------------------- |
+| `clientId`     | —                              | `DINIE_CLIENT_ID`     | Client id do OAuth2 (obrigatório).                  |
+| `clientSecret` | —                              | `DINIE_CLIENT_SECRET` | Client secret do OAuth2 (obrigatório).              |
+| `baseUrl`      | `https://api.dinie.com/api/v3` | `DINIE_BASE_URL`      | URL base da API **incluindo** `/api/v3`.            |
+| `timeout`      | `30000` (ms)                   | —                     | Timeout por requisição.                             |
+| `maxRetries`   | `3`                            | —                     | Tentativas para erros retryable (`429`/`5xx`/rede). |
+| `logLevel`     | `'off'`                        | `DINIE_LOG`           | `'off' \| 'error' \| 'warn' \| 'info' \| 'debug'`.  |
+| `logger`       | console                        | —                     | Logger custom (ver [Logging](#logging)).            |
+| `idempotency`  | `true`                         | —                     | Opt-out global de idempotency-key (foot-gun).       |
+| `dispatcher`   | `undici.Pool`                  | —                     | Seam de transporte (injeção de `undici` em testes). |
 
 O getter `client.rateLimit` (camelCase) expõe o último estado de rate-limit visto
 (`{ limit, remaining, resetAt }`, ou `null` antes da primeira resposta) — populado dos
@@ -79,7 +79,7 @@ import { Dinie, Webhooks } from 'dinie-sdk';
 const dinie = new Dinie({
   clientId: process.env.DINIE_CLIENT_ID!,
   clientSecret: process.env.DINIE_CLIENT_SECRET!,
-  baseUrl: process.env.DINIE_BASE_URL ?? 'https://sandbox.api.dinie.com.br/api/v3',
+  baseUrl: process.env.DINIE_BASE_URL ?? 'https://api-dev.dinietech.io/api/v3',
 });
 
 // 1) Cria o cliente — cpf + cnpj + email + phone (sem `taxId`; o id retornado é `cust_…`).
