@@ -30,14 +30,27 @@
  * align with `runtime-patterns.md`/OpenAI. `408` (request timeout) and `500` (internal)
  * were added; retrying `500` on a non-GET is safe because the stable `X-Idempotency-Key`
  * (minted once before the loop — D9) guarantees a retry never creates a duplicate
- * resource. `409` (Dinie semantic conflict) and `410` (gone) never retry; `401` is a
- * one-shot re-auth handled in `http.ts`, orthogonal to this set.
+ * resource. `410` (gone) never retries, and neither does a `409` except the
+ * `idempotency_key_in_use` one ({@link isIdempotencyKeyInUse}); `401` is a one-shot re-auth
+ * handled in `http.ts`, orthogonal to this set.
  */
 export const RETRYABLE_STATUS: ReadonlySet<number> = new Set([408, 429, 500, 502, 503, 504]);
 
 /** True only for the retryable status set (`{408, 429, 500, 502, 503, 504}` — D8). */
 export function shouldRetry(status: number): boolean {
   return RETRYABLE_STATUS.has(status);
+}
+
+/** Problem `code` of the 409 sent while another request with the same idempotency key still runs. */
+const IDEMPOTENCY_KEY_IN_USE_CODE = 'idempotency_key_in_use';
+
+/**
+ * True for the 409 the API sends while a request with the same idempotency key is still
+ * running. It is retried like a `429`: same key, waiting the `Retry-After`. Any other 409
+ * is a final answer.
+ */
+export function isIdempotencyKeyInUse(status: number, code: string | undefined): boolean {
+  return status === 409 && code === IDEMPOTENCY_KEY_IN_USE_CODE;
 }
 
 // ── Backoff + jitter ──────────────────────────────────────────────────────────

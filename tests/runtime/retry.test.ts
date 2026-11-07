@@ -1,6 +1,7 @@
 import { RateLimitError } from '../../src/generated/errors/index.js';
 import {
   RETRYABLE_STATUS,
+  isIdempotencyKeyInUse,
   isRetryableNetworkError,
   parseRetryAfter,
   retryDelay,
@@ -42,6 +43,21 @@ describe('shouldRetry — V0.2 reconciled retryable status set (D8)', () => {
     expect([...RETRYABLE_STATUS].sort((a, b) => a - b)).toEqual([408, 429, 500, 502, 503, 504]);
     expect(RETRYABLE_STATUS.has(409)).toBe(false);
     expect(RETRYABLE_STATUS.has(410)).toBe(false);
+  });
+});
+
+describe('isIdempotencyKeyInUse — the one 409 that is retried', () => {
+  it('is true for a 409 whose code is idempotency_key_in_use', () => {
+    expect(isIdempotencyKeyInUse(409, 'idempotency_key_in_use')).toBe(true);
+  });
+
+  it('is false for any other 409 code, or for a 409 without one', () => {
+    expect(isIdempotencyKeyInUse(409, 'email_already_exists')).toBe(false);
+    expect(isIdempotencyKeyInUse(409, undefined)).toBe(false);
+  });
+
+  it('is false for the same code on another status', () => {
+    expect(isIdempotencyKeyInUse(422, 'idempotency_key_in_use')).toBe(false);
   });
 });
 

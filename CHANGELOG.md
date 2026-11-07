@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- A `409` with the problem code `idempotency_key_in_use`, sent while an earlier request with the same idempotency key is still running, is now retried like a `429`: same key, after its `Retry-After`, within `maxRetries`. The call returns the stored response the API replays once the first request finishes. Any other `409` is still raised without a retry.
+
 ## [1.1.1] - 2026-11-06
 
 ### Fixed

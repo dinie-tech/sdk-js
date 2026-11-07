@@ -254,6 +254,10 @@ Toda escrita **POST/PATCH** recebe automaticamente um header `X-Idempotency-Key`
 criação após um `500`/timeout. `GET` e `DELETE` não enviam key (`DELETE` é idempotente por
 semântica HTTP).
 
+Se a API responder `409` com o código `idempotency_key_in_use` (outra requisição com a mesma
+key ainda está rodando), o SDK retenta com a mesma key depois do `Retry-After`, como num `429`,
+e a chamada devolve a resposta armazenada. Qualquer outro `409` é lançado sem retry.
+
 - **Override por chamada:** `await dinie.customers.create(params, { idempotencyKey: 'sua-key' })`.
 - **Opt-out global:** `new Dinie({ ..., idempotency: false })` (foot-gun em fintech —
   documentado; o override por chamada ainda vence o opt-out).

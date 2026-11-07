@@ -337,6 +337,15 @@ describe('HttpClient — rate-limit capture', () => {
   });
 });
 
+const KEY_IN_USE_PROBLEM = {
+  type: 'https://docs.dinie.com/errors/conflict',
+  title: 'Conflict',
+  status: 409,
+  detail: 'A request with this idempotency key is still running. Retry after it finishes.',
+  code: 'idempotency_key_in_use',
+  request_id: '0b9f3c1e-6d2a-4c53-9a54-7e1b0f2f8a11',
+};
+
 describe('HttpClient — retry integration', () => {
   it('retries a 503 → 201 reusing the Idempotency-Key, bumping X-Dinie-Retry-Count, honoring Retry-After', async () => {
     const sleep = vi.fn(async () => {});
@@ -406,6 +415,67 @@ describe('HttpClient — retry integration', () => {
     expect(sleep).toHaveBeenCalledTimes(1);
     // The errored attempt is not captured; only the successful reply is.
     expect(ep.callCount).toBe(1);
+  });
+
+  it('retries a 409 idempotency_key_in_use with the same key after its Retry-After and returns the replayed 201', async () => {
+    const sleep = vi.fn(async () => {});
+    mock.mockToken();
+    const ep = mock.mockEndpoint({
+      method: 'POST',
+      path: '/customers',
+      responses: [
+        { statusCode: 409, headers: { 'retry-after': '1' }, body: KEY_IN_USE_PROBLEM },
+        { statusCode: 201, headers: { 'idempotent-replayed': 'true' }, body: { id: 'cus_1' } },
+      ],
+    });
+
+    const result = await makeClient(sleep).request<{ id: string }>(POST_CUSTOMER);
+
+    expect(result).toEqual({ id: 'cus_1' });
+    expect(ep.callCount).toBe(2);
+    const [first, second] = ep.requests;
+    expect(first?.headers['x-idempotency-key']).toMatch(/^dinie-sdk-retry-/);
+    expect(second?.headers['x-idempotency-key']).toBe(first?.headers['x-idempotency-key']);
+    expect(sleep).toHaveBeenCalledTimes(1);
+    expect(sleep).toHaveBeenCalledWith(1000);
+  });
+
+  it('retries a 409 idempotency_key_in_use only up to maxRetries, then throws the ConflictError', async () => {
+    const sleep = vi.fn(async () => {});
+    mock.mockToken();
+    const ep = mock.mockEndpoint({
+      method: 'POST',
+      path: '/customers',
+      responses: { statusCode: 409, headers: { 'retry-after': '1' }, body: KEY_IN_USE_PROBLEM },
+    });
+
+    await expect(
+      makeClient(sleep).request<unknown>({ ...POST_CUSTOMER, options: { maxRetries: 2 } }),
+    ).rejects.toBeInstanceOf(ConflictError);
+
+    expect(ep.callCount).toBe(3);
+    expect(sleep).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not retry a 409 with any other code', async () => {
+    const sleep = vi.fn(async () => {});
+    mock.mockToken();
+    const ep = mock.mockEndpoint({
+      method: 'POST',
+      path: '/customers',
+      responses: {
+        statusCode: 409,
+        headers: { 'retry-after': '1' },
+        body: { ...KEY_IN_USE_PROBLEM, code: 'email_already_exists' },
+      },
+    });
+
+    await expect(makeClient(sleep).request<unknown>(POST_CUSTOMER)).rejects.toBeInstanceOf(
+      ConflictError,
+    );
+
+    expect(ep.callCount).toBe(1);
+    expect(sleep).not.toHaveBeenCalled();
   });
 });
 
