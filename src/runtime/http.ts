@@ -17,7 +17,9 @@
  *   8. on a retryable status (`{408,429,500,502,503,504}` — D8) or a transient transport
  *      error, back off (`retryDelay`) and retry while attempts remain, bumping
  *      `X-Dinie-Retry-Count`;
- *   9. otherwise map the response to a typed error via `APIError.fromResponse`.
+ *   9. on a 409 `idempotency_key_in_use` (the same key's request is still running), retry
+ *      like a retryable status, with the same key;
+ *  10. otherwise map the response to a typed error via `APIError.fromResponse`.
  *
  * The browser guard and env-var resolution live in `client.ts` (story 009); this
  * module is pure transport. Mirrors `openai-node/src/client.ts` (makeRequest/
@@ -47,14 +49,19 @@ import type { Dispatcher } from 'undici';
 import { Pool } from 'undici';
 
 import { APIPromise, type RawResponse } from './api-promise.js';
-import { APIError, APIConnectionError, APITimeoutError } from './errors.js';
+import { APIError, APIConnectionError, APIStatusError, APITimeoutError } from './errors.js';
 // Controlled inverse import — see the boundary note above. `AuthError` is thrown directly
 // on a persistent 401; importing the barrel also registers the full catalog.
 import { AuthError } from '../generated/errors/index.js';
 import { generateIdempotencyKey } from './idempotency.js';
 import { RuntimeLogger, newRequestLogID, type LogLevel, type Logger } from './logger.js';
 import { RateLimitTracker, type RateLimit } from './rate-limit.js';
-import { isRetryableNetworkError, retryDelay, shouldRetry } from './retry.js';
+import {
+  isIdempotencyKeyInUse,
+  isRetryableNetworkError,
+  retryDelay,
+  shouldRetry,
+} from './retry.js';
 import { TokenManager } from './token-manager.js';
 // Controlled inverse imports: runtime reads generator-emitted constants (D3/§6.2).
 import { API_VERSION } from '../generated/api-version.js';
@@ -372,7 +379,16 @@ export class HttpClient {
         continue;
       }
 
-      throw await APIError.fromResponse(res);
+      const failure = await APIError.fromResponse(res);
+      if (
+        failure instanceof APIStatusError &&
+        isIdempotencyKeyInUse(failure.status, failure.code) &&
+        attempt < maxRetries
+      ) {
+        await this.#sleep(retryDelay(attempt, headerValue(res.headers, 'retry-after')));
+        continue;
+      }
+      throw failure;
     }
   }
 
